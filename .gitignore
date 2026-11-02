@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/
+*.log
+*.tmp
+*.bak
+*.local.json
+exports/
+backups/

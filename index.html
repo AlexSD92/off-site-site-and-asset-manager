@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101c30">
+  <meta name="description" content="An offline auction site plan and lot clearance tracker. Draw sites, track access and invoice numbers, and export portable JSON files.">
+  <title>YardMap — Auction Site Planner</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="YardMap Auction Site Planner">
+        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div><strong>YardMap</strong><small>AUCTION SITE PLANNER</small></div>
+      </div>
+      <div class="project-control">
+        <label for="projectSelect">SITE</label>
+        <select id="projectSelect" title="Switch locally saved sites"></select>
+        <button id="renameBtn" class="icon-btn" title="Rename site" aria-label="Rename site"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4Z"/></svg></button>
+      </div>
+      <div class="top-actions">
+        <span class="save-state" id="saveState" aria-live="polite"><span class="save-dot"></span> Saved on this device</span>
+        <button class="btn btn-subtle" id="newBtn" title="Create new local site">+ New</button>
+        <button class="btn btn-subtle" id="importBtn" title="Load a previously exported JSON site plan">Import</button>
+        <button class="btn btn-primary" id="exportBtn" title="Export this site as a portable JSON file">Export JSON <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 17v4h14v-4"/></svg></button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
+    </header>
+
+    <section class="summary-strip" aria-label="Site totals">
+      <div class="summary-item"><small>TOTAL LOTS</small><strong id="statTotal">0</strong></div>
+      <div class="summary-item"><small><span class="status-dot status-cleared"></span> CLEARED</small><strong id="statCleared">0</strong></div>
+      <div class="summary-item"><small><span class="status-dot status-pending"></span> PENDING</small><strong id="statPending">0</strong></div>
+      <div class="summary-item"><small><span class="status-dot status-hold"></span> ON HOLD</small><strong id="statHold">0</strong></div>
+      <div class="summary-item"><small><span class="status-dot status-issue"></span> ISSUES</small><strong id="statIssue">0</strong></div>
+      <div class="summary-item summary-progress"><div class="progress-label"><small>CLEARANCE PROGRESS</small><b id="progressLabel">0%</b></div><div class="progress-track"><span id="progressFill"></span></div></div>
+    </section>
+
+    <div class="main-layout">
+      <aside class="tool-sidebar" aria-label="Drawing tools">
+        <div class="section-heading">DRAW & EDIT <span>TOOLS</span></div>
+        <div class="tool-group">
+          <button class="tool active" data-tool="select" title="Select and move (V)" aria-pressed="true"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="m5 3 14 9-7 1-3 7Z"/></svg></span><span>Select / Move</span><kbd>V</kbd></button>
+          <button class="tool" data-tool="pan" title="Pan the site (P)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M8 13V5a2 2 0 0 1 4 0v5-7a2 2 0 0 1 4 0v8-5a2 2 0 0 1 4 0v8c0 5-4 7-8 7-4 0-6-3-8-7l-2-4a2 2 0 0 1 4-2Z"/></svg></span><span>Pan / Navigate</span><kbd>P</kbd></button>
+        </div>
+        <div class="tool-group-title">STRUCTURE</div>
+        <div class="tool-group">
+          <button class="tool" data-tool="wall" title="Draw a wall (W)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M3 4h18v16H3zM3 11h18M3 16h18M9 4v7m6 0v5m-6 0v4"/></svg></span><span>Wall</span><kbd>W</kbd></button>
+          <button class="tool" data-tool="door" title="Place doorway (D)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M4 21V3h16v18M4 21h16M7 21V7h10v14m-2-7h.01"/></svg></span><span>Doorway</span><kbd>D</kbd></button>
+          <button class="tool" data-tool="shutter" title="Draw roller shutter (S)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M3 21V4h18v17M6 8h12M6 11h12M6 14h12M6 17h12"/></svg></span><span>Roller Shutter</span><kbd>S</kbd></button>
+        </div>
+        <div class="tool-group-title">ASSETS & ACCESS</div>
+        <div class="tool-group">
+          <button class="tool" data-tool="lot" title="Draw a lot rectangle (L)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M10 10v10"/></svg></span><span>Draw Lot</span><kbd>L</kbd></button>
+          <button class="tool tool-green" data-tool="green" title="Tap lots to mark cleared (G)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m7 12 3.5 3.5L17 9"/></svg></span><span>Green Off</span><kbd>G</kbd></button>
+          <button class="tool" data-tool="lock" title="Place a lock and associate its key (K)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></svg></span><span>Lock & Key</span><kbd>K</kbd></button>
+          <button class="tool" data-tool="label" title="Add a location label (T)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M4 6h16M12 6v14m-5 0h10"/></svg></span><span>Text Label</span><kbd>T</kbd></button>
+        </div>
+        <div class="tool-hint"><strong>Quick tips</strong><p>Drag to draw lots or walls. Tap a lot with <b>Green Off</b> to clear it. Select anything to edit its details.</p><p>Mouse wheel to zoom; middle-drag to pan. On mobile, use <b>Pan</b> or two-finger pinch.</p></div>
+      </aside>
+
+      <main class="workspace">
+        <div class="canvas-toolbar">
+          <div class="canvas-title"><span class="canvas-live"></span><strong id="canvasTitle">Site Layout</strong><span id="siteDimensions">48 × 32 m</span></div>
+          <div class="canvas-actions">
+            <button class="mini-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+            <button class="mini-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+            <span class="toolbar-separator"></span>
+            <button class="mini-btn" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+            <span id="zoomLabel" class="zoom-label">100%</span>
+            <button class="mini-btn" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+            <button class="mini-btn fit-btn" id="fitBtn" title="Fit site to view">Fit</button>
+          </div>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="siteCanvas" aria-label="Interactive scaled auction site plan"></canvas>
+          <div id="emptyGuide" class="canvas-guide"><div class="guide-symbol">✦</div><strong>Start mapping your site</strong><span>Choose <b>Draw Lot</b> or <b>Wall</b>, then drag on the grid.</span><button id="quickLotBtn" class="btn btn-primary">+ Draw first lot</button></div>
+          <div class="scale-badge" aria-live="polite"><span id="scaleMeasure">5 m</span><div id="scaleLine" class="scale-line"></div><small id="scaleHint">1 square = 1 m</small></div>
+          <div class="canvas-note" id="canvasNote">Select a tool to get started</div>
+          <div class="mobile-canvas-controls"><button id="mobilePan" title="Toggle pan mode">Pan</button><button id="mobileGreen" title="Toggle green-off mode">✓ Clear</button></div>
+        </div>
+        <div class="canvas-footer"><span><span class="footer-key">●</span> Changes autosave on this device</span><span id="activeToolHelp">Select & move items</span></div>
+      </main>
+
+      <aside class="details-sidebar" aria-label="Site information and editing">
+        <div class="panel-tabs" role="tablist" aria-label="Site information"><button class="panel-tab active" data-tab="properties" role="tab" aria-selected="true">Details</button><button class="panel-tab" data-tab="lots" role="tab" aria-selected="false">Lots <span id="lotsTabCount">0</span></button><button class="panel-tab" data-tab="access" role="tab" aria-selected="false">Access</button></div>
+        <div id="panelContent" class="panel-content"></div>
+      </aside>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog id="confirmDialog" class="confirm-dialog"><form method="dialog"><h3 id="confirmTitle">Confirm</h3><p id="confirmText"></p><div class="dialog-actions"><button class="btn btn-subtle" value="cancel">Cancel</button><button class="btn btn-danger" id="confirmAccept" value="confirm">Confirm</button></div></form></dialog>
+</body>
+</html>
