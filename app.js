@@ -22,6 +22,7 @@
     shutter: 'Drag along the entrance to draw a roller shutter.',
     lot: 'Drag across the grid to draw a lot footprint. Tap to create a 3 × 2 lot.',
     green: 'Tap any lot to mark it cleared (or tap again to undo).',
+    delete: 'Tap an item to delete it. Undo restores it. Dragging the view won’t delete anything.',
     lock: 'Tap the grid to mark a lock. Add its key reference in Details.',
     label: 'Tap the grid to place a location label.'
   };
@@ -61,21 +62,27 @@
     const el=$('toast'); el.textContent=msg; el.classList.add('show');
     clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2600);
   }
-  function storageStatus(message, error=false) {
+  function storageStatus(message, error=false, saving=false) {
     const s=$('saveState');s.innerHTML=`<span class="save-dot ${error?'error':''}"></span> ${e(message)}`;
+    const banner=$('saveBanner');
+    banner.dataset.state=error?'error':saving?'saving':'saved';
+    $('saveBannerText').textContent=`${error?'⚠':saving?'◌':'✓'} ${message}`;
+    $('saveBannerHint').textContent=error
+      ? 'Your changes may not be stored. Export JSON now to make a backup.'
+      : 'Changes stay on this device. Export JSON to keep a backup.';
   }
   function storeNow() {
     clearTimeout(saveTimer);saveTimer=null;
     try {
       localStorage.setItem(STORE_KEY,JSON.stringify(state));
-      storageStatus('Saved on this device');
+      storageStatus(`Saved locally at ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`);
     } catch (err) {
-      storageStatus('Local save unavailable', true);
+      storageStatus('Not saved — browser storage unavailable', true);
       toast('Local browser storage is unavailable. Export JSON to back up your plan.');
     }
   }
   function scheduleSave() {
-    storageStatus('Saving…'); clearTimeout(saveTimer);
+    storageStatus('Saving changes…', false, true); clearTimeout(saveTimer);
     saveTimer=setTimeout(storeNow,200);
   }
 
@@ -254,12 +261,13 @@
     if(!TOOLS[tool])return;
     settings.tool=tool;
     wrap.dataset.tool=tool;
-    for(const el of document.querySelectorAll('[data-tool]')){
+    for(const el of document.querySelectorAll('button[data-tool]')){
       el.classList.toggle('active',el.dataset.tool===tool);
       el.setAttribute('aria-pressed',el.dataset.tool===tool?'true':'false');
     }
     $('canvasNote').textContent=TOOLS[tool];$('activeToolHelp').textContent=TOOLS[tool];
     $('mobilePan').classList.toggle('active',tool==='pan');$('mobileGreen').classList.toggle('green-active',tool==='green');
+    $('mobileDelete').classList.toggle('delete-active',tool==='delete');
     drawSoon();
   }
   function switchTab(tab){
@@ -276,7 +284,12 @@
     if(focus){const o=getSelected();if(o)centerOn(o);}
     drawSoon();
   }
-  function refreshAll(){refreshStats();renderPanel();refreshProjectSelector();drawSoon();}
+  function refreshAll(){
+    const panelScroll=panel.scrollTop;
+    refreshStats();renderPanel();refreshProjectSelector();
+    panel.scrollTop=panelScroll;
+    drawSoon();
+  }
 
   // Coordinates are stored in whole grid units; physical distance is cellMeters per unit.
   const scale=()=>CELL_PX*view.zoom;
@@ -308,11 +321,20 @@
   }
   function resizeCanvas(){
     const r=wrap.getBoundingClientRect();const prevW=view.width,prevH=view.height;
-    view.width=Math.max(1,r.width);view.height=Math.max(1,r.height);
+    const width=Math.max(1,r.width),height=Math.max(1,r.height);
     const dpr=Math.min(window.devicePixelRatio||1,3);
-    canvas.width=Math.max(1,Math.round(view.width*dpr));canvas.height=Math.max(1,Math.round(view.height*dpr));
-    if(!view.fitted&&prevW&&prevH){view.offsetX+=(view.width-prevW)/2;view.offsetY+=(view.height-prevH)/2;}
-    if(view.fitted)fitView();else drawSoon();
+    const pixelW=Math.max(1,Math.round(width*dpr)),pixelH=Math.max(1,Math.round(height*dpr));
+    // ResizeObserver also fires after unrelated UI updates. Don't reset the canvas
+    // (or refit the map) unless the drawable viewport actually changed.
+    if(Math.abs(width-prevW)<.5&&Math.abs(height-prevH)<.5&&canvas.width===pixelW&&canvas.height===pixelH)return;
+    const centreX=(prevW/2-view.offsetX)/scale(),centreY=(prevH/2-view.offsetY)/scale();
+    view.width=width;view.height=height;
+    canvas.width=pixelW;canvas.height=pixelH;
+    if(view.fitted)fitView();
+    else {
+      view.offsetX=width/2-centreX*scale();view.offsetY=height/2-centreY*scale();
+      drawSoon();
+    }
   }
   function drawSoon(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;draw();});}
   function line(ctx,x1,y1,x2,y2){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
@@ -487,6 +509,15 @@
     }
     return null;
   }
+  function removeObject(o){
+    if(!o)return false;
+    const before=snapshot();
+    project.objects=project.objects.filter(item=>item.id!==o.id);
+    if(settings.selected===o.id)settings.selected=null;
+    commit(before);
+    toast(`${o.type==='lot'?`Lot ${o.number||'—'}`:o.label||o.type} deleted · Undo to restore`);
+    return true;
+  }
   function isLotCorner(p,o){return o?.type==='lot'&&Math.hypot(p.x-(o.x+o.w),p.y-(o.y+o.h))<Math.max(.3,12/scale());}
   function segment(start,end,type){
     let a=snapCell(start),b=snapCell(end);
@@ -566,6 +597,10 @@
         toast(`Lot ${l.number||'?'} ${l.status==='cleared'?'cleared ✓':'set back to pending'}`);}
       return;
     }
+    if(settings.tool==='delete'){
+      drawing={action:'delete',startClient:{x:ev.clientX,y:ev.clientY}};
+      return;
+    }
     if(settings.tool==='select'){
       const target=hitObject(p);
       if(!target){selectObject(null);drawing=null;return;}
@@ -608,6 +643,14 @@
     if(pinch){if(pointers.size<2)pinch=null;drawing=null;return;}
     if(!drawing)return;
     const d=drawing;drawing=null;
+    if(d.action==='delete'){
+      // Delete only on a completed tap; moving a finger or cancelling a gesture
+      // cannot accidentally erase something.
+      if(!cancelled&&Math.hypot(ev.clientX-d.startClient.x,ev.clientY-d.startClient.y)<12){
+        removeObject(hitObject(toWorld(ev.clientX,ev.clientY)));
+      }
+      return;
+    }
     if(d.action==='move'||d.action==='resize'){
       if(cancelled){const o=project.objects.find(x=>x.id===d.id);if(o)Object.assign(o,d.original);drawSoon();return;}
       commit(d.before);return;
@@ -756,8 +799,7 @@
     if(!o)return;
     if(action==='deleteObject'){
       if(!await confirmAction('Delete this item?',`Remove ${o.type==='lot'?`lot ${o.number}`:o.label||o.type} from the site plan?`))return;
-      const before=snapshot();project.objects=project.objects.filter(x=>x.id!==o.id);settings.selected=null;
-      commit(before);toast('Item deleted');return;
+      removeObject(o);return;
     }
     const before=snapshot();
     if(action==='resetColor')o.color='';
@@ -774,7 +816,7 @@
     commit(before);
   }
   function wireUI(){
-    for(const btn of document.querySelectorAll('[data-tool]'))btn.addEventListener('click',()=>setTool(btn.dataset.tool));
+    for(const btn of document.querySelectorAll('button[data-tool]'))btn.addEventListener('click',()=>setTool(btn.dataset.tool));
     for(const btn of document.querySelectorAll('[data-tab]'))btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
     $('projectSelect').addEventListener('change',event=>changeProject(event.target.value));
     $('renameBtn').addEventListener('click',renameSite);$('newBtn').addEventListener('click',newSite);
@@ -788,6 +830,7 @@
     $('quickLotBtn').addEventListener('click',()=>setTool('lot'));
     $('mobilePan').addEventListener('click',()=>setTool(settings.tool==='pan'?'select':'pan'));
     $('mobileGreen').addEventListener('click',()=>setTool(settings.tool==='green'?'select':'green'));
+    $('mobileDelete').addEventListener('click',()=>setTool(settings.tool==='delete'?'select':'delete'));
     canvas.addEventListener('pointerdown',onPointerDown);
     canvas.addEventListener('pointermove',onPointerMove);
     canvas.addEventListener('pointerup',event=>onPointerUp(event));
@@ -830,13 +873,13 @@
         event.preventDefault();redo();return;
       }
       if(['Delete','Backspace'].includes(event.key)&&getSelected()){
-        const before=snapshot();project.objects=project.objects.filter(o=>o.id!==settings.selected);settings.selected=null;commit(before);return;
+        event.preventDefault();removeObject(getSelected());return;
       }
       if(event.key==='Escape'){selectObject(null);setTool('select');return;}
       if(event.code==='Space'&&!toolBeforeSpace){
         event.preventDefault();toolBeforeSpace=settings.tool;setTool('pan');return;
       }
-      const map={v:'select',p:'pan',w:'wall',d:'door',s:'shutter',l:'lot',g:'green',k:'lock',t:'label'};
+      const map={v:'select',e:'delete',p:'pan',w:'wall',d:'door',s:'shutter',l:'lot',g:'green',k:'lock',t:'label'};
       if(!event.ctrlKey&&!event.metaKey&&!event.altKey&&map[event.key.toLowerCase()])setTool(map[event.key.toLowerCase()]);
     });
     document.addEventListener('keyup',event=>{
