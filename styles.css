@@ -18,3 +18,27 @@
 .save-banner[data-state="error"] span{color:#9a3932}
 @media(max-width:800px){.save-banner{padding:8px 13px;flex-wrap:wrap;gap:2px 10px}.save-banner span{font-size:10px}}
 @media(max-width:480px){.save-banner{font-size:10px}.mobile-canvas-controls{gap:4px}.mobile-canvas-controls button{padding:9px 7px;font-size:11px}}
+
+/* Stable layout: canvas and inspector no longer resize each other. */
+@media (min-width:801px){
+  .app-shell{height:100dvh;min-height:650px;overflow:hidden}
+  .topbar,.summary-strip,.save-banner{flex-shrink:0}
+  .main-layout{flex:1;min-height:0;overflow:hidden}
+  .workspace{min-height:0;overflow:hidden}
+  .canvas-wrap{flex:1;min-height:0;height:auto}
+  .tool-sidebar,.details-sidebar{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+  .panel-content{min-height:0;overflow-y:auto}
+}
+@media (max-width:800px){
+  .app-shell{height:auto;min-height:100dvh;overflow:visible}
+  .main-layout{flex:none;overflow:visible}
+  .workspace{overflow:visible}
+  .canvas-wrap{height:54dvh;min-height:330px;flex:none}
+  .tool-sidebar{overflow-x:auto;overflow-y:hidden;min-height:0}
+  .details-sidebar{overflow:visible;min-height:0}
+  .panel-content{overflow:visible;min-height:0}
+}
+@media (max-width:480px){.canvas-wrap{height:52dvh;min-height:325px}}
+.font-controls{display:flex;align-items:center;gap:9px;justify-content:space-between;margin:6px 0 12px}
+.font-controls span{font-size:11px;color:#667891;font-weight:750}
+.font-controls button{min-width:52px;font-size:14px;touch-action:manipulation}

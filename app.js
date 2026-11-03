@@ -52,6 +52,7 @@
   let toastTimer = null;
   let state = { activeId:null, projects:[] };
   let project;
+  let recoveryBlocked=false;
 
   const createProject = (name='Untitled auction site') => ({
     id:nextId(), name, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
@@ -73,6 +74,10 @@
   }
   function storeNow() {
     clearTimeout(saveTimer);saveTimer=null;
+    if(recoveryBlocked){
+      storageStatus('Local data needs recovery — export your existing backup', true);
+      return;
+    }
     try {
       localStorage.setItem(STORE_KEY,JSON.stringify(state));
       storageStatus(`Saved locally at ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`);
@@ -112,6 +117,10 @@
       }
       if (['wall','door','shutter','lock'].includes(obj.type)) obj.label=String(raw.label??'').slice(0,140);
       if (obj.type==='label') obj.text=String(raw.text??'Area').slice(0,150);
+      if (['label','lot'].includes(obj.type) && raw.fontSize !== undefined) {
+        const size=Number(raw.fontSize);
+        if (Number.isFinite(size)) obj.fontSize=minmax(size,.15,2.5);
+      }
       if (obj.type==='lock') {
         obj.keyRef=String(raw.keyRef??'').slice(0,140);
         obj.keyHolder=String(raw.keyHolder??'').slice(0,140);
@@ -129,19 +138,29 @@
     };
   }
   function load() {
+    let storedText=null;
     try {
-      const saved=JSON.parse(localStorage.getItem(STORE_KEY)||'null');
-      if(saved && Array.isArray(saved.projects) && saved.projects.length) {
-        state.projects=saved.projects.slice(0,100).map(p=>{try{return sanitizeProject(p);}catch{return null;}}).filter(Boolean);
+      storedText=localStorage.getItem(STORE_KEY);
+      if(storedText){
+        const saved=JSON.parse(storedText);
+        if(!saved||!Array.isArray(saved.projects)||!saved.projects.length)throw new Error('Invalid saved project list');
+        const restored=saved.projects.slice(0,100).map(p=>sanitizeProject(p));
+        if(!restored.length)throw new Error('No readable projects');
+        state.projects=restored;
         state.activeId=saved.activeId;
       }
-    } catch (err) { console.warn('Could not restore saved plan',err); }
-    if(!state.projects.length) {
+    }catch(err){
+      console.error('YardMap could not read its existing browser data; it will not overwrite it.',err);
+      recoveryBlocked=storedText!==null;
+    }
+    if(!state.projects.length){
       project=createProject('My first auction site');state.projects.push(project);state.activeId=project.id;
-      storeNow();
-    } else {
+      if(!recoveryBlocked)storeNow();
+      else storageStatus('Existing save unreadable — original data protected', true);
+    }else{
       project=state.projects.find(p=>p.id===state.activeId)||state.projects[0];
       state.activeId=project.id;
+      storageStatus('Loaded locally — autosave active');
     }
   }
   function refreshProjectSelector() {
@@ -320,19 +339,21 @@
     view.fitted=false;drawSoon();
   }
   function resizeCanvas(){
-    const r=wrap.getBoundingClientRect();const prevW=view.width,prevH=view.height;
-    const width=Math.max(1,r.width),height=Math.max(1,r.height);
-    const dpr=Math.min(window.devicePixelRatio||1,3);
-    const pixelW=Math.max(1,Math.round(width*dpr)),pixelH=Math.max(1,Math.round(height*dpr));
-    // ResizeObserver also fires after unrelated UI updates. Don't reset the canvas
-    // (or refit the map) unless the drawable viewport actually changed.
-    if(Math.abs(width-prevW)<.5&&Math.abs(height-prevH)<.5&&canvas.width===pixelW&&canvas.height===pixelH)return;
-    const centreX=(prevW/2-view.offsetX)/scale(),centreY=(prevH/2-view.offsetY)/scale();
+    const r=wrap.getBoundingClientRect();
+    const width=Math.round(r.width),height=Math.round(r.height);
+    if(width<2||height<2)return; // Ignore transient sizes while the page is loading.
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const pixelW=Math.round(width*dpr),pixelH=Math.round(height*dpr);
+    if(width===view.width&&height===view.height&&canvas.width===pixelW&&canvas.height===pixelH)return;
+    const oldW=view.width,oldH=view.height;
+    const centreX=(oldW/2-view.offsetX)/scale(),centreY=(oldH/2-view.offsetY)/scale();
     view.width=width;view.height=height;
-    canvas.width=pixelW;canvas.height=pixelH;
+    if(canvas.width!==pixelW)canvas.width=pixelW;
+    if(canvas.height!==pixelH)canvas.height=pixelH;
     if(view.fitted)fitView();
-    else {
-      view.offsetX=width/2-centreX*scale();view.offsetY=height/2-centreY*scale();
+    else{
+      view.offsetX=width/2-centreX*scale();
+      view.offsetY=height/2-centreY*scale();
       drawSoon();
     }
   }
@@ -378,7 +399,7 @@
     if(o.status==='cleared'){
       c.fillStyle=color;roundRect(c,o.x+.05,o.y+.05,Math.min(.22,o.w/4),o.h-.1,.06);c.fill();
     }
-    const f=Math.min(.56,Math.max(.26,o.w/5));
+    const f=o.fontSize??Math.min(.56,Math.max(.26,o.w/5));
     c.textAlign='center';c.textBaseline='middle';c.fillStyle='#263a52';c.font=`800 ${f}px system-ui,sans-serif`;
     const main=o.number?`LOT ${o.number}`:'LOT';
     const label=main.length>18?main.slice(0,17)+'…':main;
@@ -402,13 +423,19 @@
       c.fillText((o.label||o.keyRef).slice(0,30),o.x,o.y+.39,3.5);
     }
   }
+  function labelDimensions(c,o){
+    const size=o.fontSize??.44;
+    const text=(o.text||'Area').slice(0,80);
+    c.font=`750 ${size}px system-ui,sans-serif`;
+    const width=Math.min(20,Math.max(1.1,c.measureText(text).width+size*.8));
+    return {size,text,width,height:Math.max(.7,size*1.7)};
+  }
   function drawLabel(c,o){
-    const name=(o.text||'Area').slice(0,80);
-    c.font='750 .44px system-ui,sans-serif';c.textAlign='center';c.textBaseline='middle';
-    const w=Math.min(8,Math.max(1.1,c.measureText(name).width+.5));
+    const d=labelDimensions(c,o);
+    c.textAlign='center';c.textBaseline='middle';
     c.fillStyle='#eff5fbaa';c.strokeStyle='#9baec0';c.lineWidth=.042;
-    roundRect(c,o.x-w/2,o.y-.35,w,.7,.15);c.fill();c.stroke();
-    c.fillStyle=COLORS.label;c.fillText(name,o.x,o.y,w-.35);
+    roundRect(c,o.x-d.width/2,o.y-d.height/2,d.width,d.height,.15);c.fill();c.stroke();
+    c.fillStyle=COLORS.label;c.fillText(d.text,o.x,o.y,d.width-.2);
   }
   function drawSelection(c,o){
     c.save();c.strokeStyle='#2479f0';c.lineWidth=2/scale();c.setLineDash([5/scale(),4/scale()]);
@@ -505,7 +532,10 @@
       if(o.type==='lot'&&p.x>=o.x-.07&&p.x<=o.x+o.w+.07&&p.y>=o.y-.07&&p.y<=o.y+o.h+.07)return o;
       if(['wall','door','shutter'].includes(o.type)&&closestLineDistance(p,o)<=Math.max(.22,9/scale()))return o;
       if(o.type==='lock'&&Math.hypot(p.x-o.x,p.y-o.y)<=Math.max(.4,12/scale()))return o;
-      if(o.type==='label'&&Math.abs(p.x-o.x)<Math.max(.9,18/scale())&&Math.abs(p.y-o.y)<Math.max(.4,9/scale()))return o;
+      if(o.type==='label'){
+        const d=labelDimensions(ctx,o);
+        if(Math.abs(p.x-o.x)<=d.width/2+.1&&Math.abs(p.y-o.y)<=d.height/2+.1)return o;
+      }
     }
     return null;
   }
@@ -704,6 +734,8 @@
       html+=`<p class="field-help">Colour can be customised independently of clearance status. Green means cleared in the progress dashboard.</p>`;
       html+=`<div class="divider"></div><h3 class="panel-title">Footprint</h3>${fieldsXY(o,['x','y','w','h'])}`;
       html+=`<p class="field-help">Physical size: ${fmt(o.w*project.cellMeters)} × ${fmt(o.h*project.cellMeters)} metres.</p>`;
+      html+=field('Lot number font size (grid squares)','fontSize',o.fontSize??Math.min(.56,Math.max(.26,o.w/5)),'number','min="0.15" max="2.5" step="0.05"');
+      html+=`<p class="field-help">Change the size of the lot number on this plan. Default adapts to lot width.</p>`;
       html+=field('Notes / buyer / collection details','notes',o.notes,'textarea');
       html+=`<div class="panel-actions"><button class="btn btn-success" data-action="clearSelected">✓ ${o.status==='cleared'?'Reopen lot':'Green off lot'}</button><button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
     }else if(o.type==='lock'){
@@ -711,7 +743,11 @@
       html+=field('Key held by / location','keyHolder',o.keyHolder,'text','placeholder="e.g. Site manager / key safe"');
       html+=fieldsXY(o,['x','y'])+field('Access notes','notes',o.notes,'textarea');
     }else if(o.type==='label'){
-      html+=field('Text to display','text',o.text)+fieldsXY(o,['x','y'])+field('Notes','notes',o.notes,'textarea');
+      html+=field('Text to display','text',o.text);
+      html+=`<div class="font-controls"><button class="btn btn-light" data-action="labelSmaller" title="Smaller label text" aria-label="Make label text smaller">A−</button><span>Label font size</span><button class="btn btn-light" data-action="labelLarger" title="Larger label text" aria-label="Make label text larger">A+</button></div>`;
+      html+=field('Font size (grid squares)','fontSize',o.fontSize??.44,'number','min="0.15" max="2.5" step="0.05"');
+      html+=`<p class="field-help">A− / A+ resize the label on the plan. It is saved with this site.</p>`;
+      html+=fieldsXY(o,['x','y'])+field('Notes','notes',o.notes,'textarea');
     }else{
       html+=field('Name / reference','label',o.label)+fieldsXY(o,['x1','y1','x2','y2']);
       html+=`<p class="field-help">Length: ${fmt(Math.hypot(o.x2-o.x1,o.y2-o.y1)*project.cellMeters)} metres. Draw or move on the grid to reposition.</p>`;
@@ -781,6 +817,11 @@
       else if(key==='x')value=minmax(value,0,project.cols);
       else if(key==='y')value=minmax(value,0,project.rows);
     }
+    if(key==='fontSize'){
+      const parsed=Number(value);
+      if(!Number.isFinite(parsed)||parsed<.15||parsed>2.5){toast('Font size must be 0.15 to 2.5 grid squares.');renderPanel();return;}
+      value=Math.round(parsed*100)/100;
+    }
     if(key==='color'&&!/^#[0-9a-f]{6}$/i.test(value))return;
     obj[key]=value;
     commit(before);
@@ -802,6 +843,11 @@
       removeObject(o);return;
     }
     const before=snapshot();
+    if(o.type==='label' && ['labelSmaller','labelLarger'].includes(action)){
+      const direction=action==='labelLarger'?1:-1;
+      o.fontSize=Math.round(minmax((o.fontSize??.44)+direction*.1,.15,2.5)*100)/100;
+      commit(before);return;
+    }
     if(action==='resetColor')o.color='';
     if(action==='clearSelected')o.status=o.status==='cleared'?'pending':'cleared';
     if(action==='duplicateObject'){
@@ -887,7 +933,12 @@
     });
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&saveTimer)storeNow();});
     window.addEventListener('beforeunload',()=>{if(saveTimer)storeNow();});
-    new ResizeObserver(resizeCanvas).observe(wrap);
+    let resizeQueued=false;
+    new ResizeObserver(()=>{
+      if(resizeQueued)return;
+      resizeQueued=true;
+      requestAnimationFrame(()=>{resizeQueued=false;resizeCanvas();});
+    }).observe(wrap);
   }
   load();wireUI();refreshProjectSelector();refreshStats();renderPanel();setTool('select');
   requestAnimationFrame(()=>{resizeCanvas();fitView();});
