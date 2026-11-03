@@ -127,3 +127,14 @@
 .box-register-item>span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}
 .box-register-size{color:#7890a7;font-size:10px;white-space:nowrap}
 .box-swatch{width:17px;height:17px;flex:0 0 auto;border-radius:4px;border:1px solid #263b542a}
+
+/* Select all / Move all is an editor mode; panning only alters the viewport. */
+.toolbar-move-all{font-size:11px;font-weight:800;padding:0 10px;white-space:nowrap}
+.toolbar-move-all.move-all-active,.tool-move-all.active{background:#e8f0ff!important;color:#1c62cd!important;border-color:#91b5ee!important}
+.toolbar-move-all:disabled{opacity:.45;cursor:not-allowed}
+.canvas-wrap[data-tool="move-all"] canvas{cursor:move}
+.canvas-wrap[data-tool="select"] canvas{cursor:default}
+.group-move-panel{background:#f1f6ff;border:1px solid #cbdcf6;border-radius:9px;padding:13px 12px;margin:14px 0}
+.group-move-panel strong{display:block;color:#225caa;font-size:12px;font-weight:850;margin-bottom:5px}
+.group-move-panel p{font-size:11px;line-height:1.5;color:#516b8c;margin:5px 0 10px}
+.group-move-panel .btn{width:100%;margin-top:6px}

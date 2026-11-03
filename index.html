@@ -50,6 +50,7 @@
         <div class="section-heading">DRAW & EDIT <span>TOOLS</span></div>
         <div class="tool-group">
           <button class="tool active" data-tool="select" title="Select and move (V)" aria-pressed="true"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="m5 3 14 9-7 1-3 7Z"/></svg></span><span>Select / Move</span><kbd>V</kbd></button>
+          <button class="tool tool-move-all" data-tool="move-all" title="Select and move all objects (A / Ctrl+A)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" stroke-dasharray="2 2"/><path d="M12 1v6m0-6-2 2m2-2 2 2M12 23v-6m0 6-2-2m2 2 2-2M1 12h6m-6 0 2-2m-2 2 2 2m20-2h-6m6 0-2-2m2 2-2 2"/></svg></span><span>Select All / Move All</span><kbd>A</kbd></button>
           <button class="tool tool-delete" data-tool="delete" title="Delete an item (E) · Undo available" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 3h4m-8 4 1 14h10l1-14M10 11v6m4-6v6"/></svg></span><span>Delete Item</span><kbd>E</kbd></button>
           <button class="tool" data-tool="pan" title="Pan the site (P)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M8 13V5a2 2 0 0 1 4 0v5-7a2 2 0 0 1 4 0v8-5a2 2 0 0 1 4 0v8c0 5-4 7-8 7-4 0-6-3-8-7l-2-4a2 2 0 0 1 4-2Z"/></svg></span><span>Pan / Navigate</span><kbd>P</kbd></button>
         </div>
@@ -67,7 +68,7 @@
           <button class="tool" data-tool="lock" title="Place a lock and associate its key (K)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></svg></span><span>Lock & Key</span><kbd>K</kbd></button>
           <button class="tool" data-tool="label" title="Add a location label (T)" aria-pressed="false"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="M4 6h16M12 6v14m-5 0h10"/></svg></span><span>Text Label</span><kbd>T</kbd></button>
         </div>
-        <div class="tool-hint"><strong>Quick tips</strong><p>Drag to draw lots, independent <b>area boxes</b> or walls. Boxes have custom labels and colours without invoices. Tap a lot with <b>Green Off</b> to clear it. Select anything to edit its details.</p><p>Use <b>Delete Item</b> to tap an object to remove it. Undo restores deleted items. Mouse wheel to zoom; middle-drag to pan. On mobile, use <b>Pan</b> or two-finger pinch.</p></div>
+        <div class="tool-hint"><strong>Quick tips</strong><p>Drag to draw lots, independent <b>area boxes</b> or walls. Boxes have custom labels and colours without invoices. Tap a lot with <b>Green Off</b> to clear it. Select anything to edit its details.</p><p>Use <b>Delete Item</b> to tap an object to remove it. Undo restores deleted items. Mouse wheel to zoom, or drag empty space while using Select to pan without moving objects. Space-drag and middle-drag also pan. Use <b>Move All</b> to move the drawing itself. On mobile, use <b>Pan</b> or pinch.</p></div>
       </aside>
 
       <main class="workspace">
@@ -81,6 +82,7 @@
             <span id="zoomLabel" class="zoom-label">100%</span>
             <button class="mini-btn" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
             <button class="mini-btn fit-btn" id="fitBtn" title="Fit site to view">Fit</button>
+            <button class="mini-btn toolbar-move-all" id="moveAllBtn" type="button" aria-pressed="false" title="Move the complete drawing (A / Ctrl+A)">Move All</button>
           <span class="toolbar-separator"></span>
           <label class="text-scale-ctrl" for="textScaleInput">Text <input id="textScaleInput" type="number" min="50" max="250" step="5" value="100" aria-label="Size of all map text in percent"><span>%</span></label>
           <button class="mini-btn map-text-toggle" id="textToggleBtn" type="button" aria-pressed="true" title="Show or hide all text on the plan">Aa · Show</button>

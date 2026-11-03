@@ -15,7 +15,8 @@
     reserved: {label: 'Reserved', color: '#5a9ee7'}
   };
   const TOOLS = {
-    select: 'Select & move items. Drag a lot corner to resize it.',
+    select: 'Select or move individual objects. Drag blank grid space to pan the view.',
+    'move-all': 'Drag anywhere to move every item together. Undo reverses the whole movement.',
     pan: 'Drag to move around the site. Pinch to zoom on a touchscreen.',
     wall: 'Drag from one grid point to another to create a wall.',
     door: 'Drag along an opening to mark a doorway, or tap to add a 1-square door.',
@@ -208,6 +209,7 @@
   function changeProject(id){
     const target=state.projects.find(p=>p.id===id);if(!target)return;
     storeNow();project=target;state.activeId=id;settings.selected=null;history=[];future=[];
+    if(settings.tool==='move-all')setTool('select');
     refreshProjectSelector();refreshAll();fitView();storeNow();toast(`Opened ${project.name}`);
   }
   function newSite(){
@@ -215,6 +217,7 @@
     if(name===null)return;
     project=createProject(name.trim().slice(0,140)||`New auction site ${state.projects.length+1}`);
     state.projects.push(project);state.activeId=project.id;history=[];future=[];settings.selected=null;
+    if(settings.tool==='move-all')setTool('select');
     refreshProjectSelector();refreshAll();fitView();storeNow();toast('New site created');
   }
   function renameSite(){
@@ -325,6 +328,7 @@
     $('canvasTitle').textContent=project.name;
     $('siteDimensions').textContent=`${fmt(project.cols*project.cellMeters)} × ${fmt(project.rows*project.cellMeters)} m`;
     $('undoBtn').disabled=!history.length;$('redoBtn').disabled=!future.length;
+    $('moveAllBtn').disabled=!project.objects.length;
     const visible=project.showText!==false;
     $('textToggleBtn').textContent=visible?'Aa · Show':'Aa · Hidden';
     $('textToggleBtn').setAttribute('aria-pressed',String(visible));
@@ -333,7 +337,10 @@
   }
   function setTool(tool){
     if(!TOOLS[tool])return;
+    if(tool==='move-all'&&!project.objects.length){toast('Add at least one item before selecting all.');return;}
+    const previousTool=settings.tool;
     settings.tool=tool;
+    if(tool==='move-all')settings.selected=null;
     wrap.dataset.tool=tool;
     for(const el of document.querySelectorAll('button[data-tool]')){
       el.classList.toggle('active',el.dataset.tool===tool);
@@ -344,6 +351,9 @@
     $('activeToolHelp').textContent=TOOLS[tool];
     $('mobilePan').classList.toggle('active',tool==='pan');$('mobileGreen').classList.toggle('green-active',tool==='green');
     $('mobileDelete').classList.toggle('delete-active',tool==='delete');
+    $('moveAllBtn').classList.toggle('move-all-active',tool==='move-all');
+    $('moveAllBtn').setAttribute('aria-pressed',String(tool==='move-all'));
+    if(tool==='move-all'||previousTool==='move-all')renderPanel();
     drawSoon();
   }
   function switchTab(tab){
@@ -355,6 +365,7 @@
     renderPanel();
   }
   function selectObject(id,showDetails=true,focus=false){
+    if(id&&settings.tool==='move-all')setTool('select');
     settings.selected=id;
     if(showDetails)switchTab('properties');else renderPanel();
     if(focus){const o=getSelected();if(o)centerOn(o);}
@@ -532,6 +543,55 @@
  roundRect(c,o.x-d.width/2,o.y-d.height/2,d.width,d.height,.15);c.fill();c.stroke();
  c.fillStyle=COLORS.label;c.fillText(d.text,o.x,o.y,d.width-.2);
 }
+  // A temporary editor selection: move all objects using grid coordinates,
+  // not screen pixels. The data schema and serialized project stay unchanged.
+  function boundsOf(o){
+    if(['lot','box'].includes(o.type))return {minX:o.x,minY:o.y,maxX:o.x+o.w,maxY:o.y+o.h};
+    if(['wall','door','shutter'].includes(o.type))return {
+      minX:Math.min(o.x1,o.x2),minY:Math.min(o.y1,o.y2),
+      maxX:Math.max(o.x1,o.x2),maxY:Math.max(o.y1,o.y2)
+    };
+    return {minX:o.x,minY:o.y,maxX:o.x,maxY:o.y};
+  }
+  function groupBounds(items=project.objects){
+    if(!items.length)return null;
+    const b={minX:Infinity,minY:Infinity,maxX:-Infinity,maxY:-Infinity};
+    for(const o of items){
+      const q=boundsOf(o);
+      b.minX=Math.min(b.minX,q.minX);b.minY=Math.min(b.minY,q.minY);
+      b.maxX=Math.max(b.maxX,q.maxX);b.maxY=Math.max(b.maxY,q.maxY);
+    }
+    return b;
+  }
+  function translateGroup(originals,requestedX,requestedY){
+    const b=groupBounds(originals);
+    if(!b)return {dx:0,dy:0};
+    const lx=Math.ceil(-b.minX),rx=Math.floor(project.cols-b.maxX);
+    const ly=Math.ceil(-b.minY),ry=Math.floor(project.rows-b.maxY);
+    if(lx>rx||ly>ry)return null;
+    const dx=minmax(requestedX,lx,rx),dy=minmax(requestedY,ly,ry);
+    for(let i=0;i<originals.length;i++){
+      const a=originals[i],o=project.objects[i];
+      if(!o||o.id!==a.id)throw new Error('Objects changed while dragging a group.');
+      if(['wall','door','shutter'].includes(o.type)){
+        o.x1=a.x1+dx;o.x2=a.x2+dx;o.y1=a.y1+dy;o.y2=a.y2+dy;
+      }else{o.x=a.x+dx;o.y=a.y+dy;}
+    }
+    return {dx,dy};
+  }
+  function cancelGroupDrag(d){
+    if(d?.action==='move-all'){
+      project.objects=d.originals;
+      drawSoon();
+    }
+  }
+  function drawGroupOutline(c){
+    const b=groupBounds();if(!b)return;
+    c.save();c.strokeStyle='#246dea';c.lineWidth=2/scale();
+    c.setLineDash([.2,.12]);
+    c.strokeRect(b.minX-.15,b.minY-.15,b.maxX-b.minX+.3,b.maxY-b.minY+.3);
+    c.restore();
+  }
   function drawSelection(c,o){
     c.save();c.strokeStyle='#2479f0';c.lineWidth=2/scale();c.setLineDash([5/scale(),4/scale()]);
     if(o.type==='lot'||o.type==='box'){
@@ -579,6 +639,7 @@
       c.restore();
     }
     if(!options.export){
+      if(settings.tool==='move-all')drawGroupOutline(c);
       const selected=getSelected();if(selected)drawSelection(c,selected);
       if(drawing && drawing.preview && ['wall','door','shutter','lot','box'].includes(drawing.preview.type)){
         c.save();c.globalAlpha=.7;c.setLineDash([.15,.12]);
@@ -699,6 +760,7 @@
     const rect=canvas.getBoundingClientRect();midpoint.x-=rect.left;midpoint.y-=rect.top;
     pinch={initialDistance:Math.max(8,Math.hypot(a.x-b.x,a.y-b.y)),initialZoom:view.zoom,
       worldX:(midpoint.x-view.offsetX)/scale(),worldY:(midpoint.y-view.offsetY)/scale()};
+    cancelGroupDrag(drawing);
     drawing=null;
   }
   function updatePinch(){
@@ -731,9 +793,18 @@
       drawing={action:'delete',startClient:{x:ev.clientX,y:ev.clientY}};
       return;
     }
+    if(settings.tool==='move-all'){
+      if(!project.objects.length){setTool('select');return;}
+      drawing={action:'move-all',originals:clone(project.objects),before:snapshot(),startWorld:p};
+      return;
+    }
     if(settings.tool==='select'){
       const target=hitObject(p);
-      if(!target){selectObject(null);drawing=null;return;}
+      if(!target){
+        selectObject(null);
+        drawing={action:'pan',startClient:{x:ev.clientX,y:ev.clientY},startOffset:{x:view.offsetX,y:view.offsetY}};
+        return;
+      }
       const resize=target.id===settings.selected&&isRectangleCorner(p,target);
       selectObject(target.id);
       drawing={action:resize?'resize':'move',id:target.id,original:clone(target),before:snapshot(),startWorld:p};
@@ -751,6 +822,14 @@
       view.offsetY=drawing.startOffset.y+ev.clientY-drawing.startClient.y;view.fitted=false;drawSoon();return;
     }
     const p=toWorld(ev.clientX,ev.clientY);
+    if(drawing.action==='move-all'){
+      const dx=Math.round(p.x-drawing.startWorld.x),dy=Math.round(p.y-drawing.startWorld.y);
+      if(!translateGroup(drawing.originals,dx,dy)){
+        cancelGroupDrag(drawing);drawing=null;
+        toast('An item is outside the grid; move it inside before moving the group.');
+      }
+      drawSoon();return;
+    }
     if(drawing.action==='create'){
       drawing.endWorld=p;
       if(['lot','box'].includes(drawing.type))drawing.preview={type:drawing.type,...rectFromPoints(drawing.startWorld,p)};
@@ -773,6 +852,10 @@
     if(pinch){if(pointers.size<2)pinch=null;drawing=null;return;}
     if(!drawing)return;
     const d=drawing;drawing=null;
+    if(d.action==='move-all'){
+      if(cancelled){cancelGroupDrag(d);return;}
+      commit(d.before);return;
+    }
     if(d.action==='delete'){
       // Delete only on a completed tap; moving a finger or cancelling a gesture
       // cannot accidentally erase something.
@@ -830,6 +913,14 @@
         <div class="field-grid">${field('Grid width (squares)','cols',project.cols,'number','min="8" max="250"')}${field('Grid height (squares)','rows',project.rows,'number','min="8" max="250"')}</div>
         ${field('Metres per square','cellMeters',project.cellMeters,'number','min="0.1" max="100" step="0.1"')}
         <p class="field-help">Current site footprint: ${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m. Existing drawings remain at their grid coordinates if you change the scale.</p>
+        <div class="group-move-panel">
+          <strong>${settings.tool==='move-all'?'Move All active':'Reposition the whole drawing'}</strong>
+          <p>${settings.tool==='move-all'
+            ? `All ${project.objects.length} items are selected. Drag anywhere on the map to move everything together. One Undo restores the old positions.`
+            : 'Move all items together, or drag blank space with Select to pan the view without changing coordinates.'}</p>
+          <button type="button" class="btn btn-light" data-action="moveAll" ${project.objects.length?'':'disabled'}>Select all / Move all</button>
+          ${settings.tool==='move-all'?'<button type="button" class="btn btn-subtle" data-action="stopMoveAll">Finish moving</button>':''}
+        </div>
         <div class="divider"></div><h3 class="panel-title">Map text</h3>
         ${field('Size of all map text (%)','textScalePercent',Math.round((project.textScale??1)*100),'number','min="50" max="250" step="5"')}
         <p class="field-help">Scales lot numbers, invoices, labels and access references together. Individual font adjustments remain independent.</p>
@@ -989,6 +1080,8 @@
     if(action==='duplicateSite'){duplicateSite();return;}
     if(action==='deleteSite'){await deleteSite();return;}
     if(action==='clearCanvas'){requestClearCanvas();return;}
+    if(action==='moveAll'){setTool('move-all');return;}
+    if(action==='stopMoveAll'){setTool('select');return;}
     if(action==='drawLot'){setTool('lot');return;}
     if(action==='drawLock'){setTool('lock');return;}
     if(action==='drawShutter'){setTool('shutter');return;}
@@ -1094,6 +1187,7 @@
     $('clearCanvasUnderstand').addEventListener('change',checkClearCanvasConfirmation);
     $('clearCanvasConfirm').addEventListener('click',clearCanvasPermanently);
     $('fitBtn').addEventListener('click',fitView);
+    $('moveAllBtn').addEventListener('click',()=>setTool(settings.tool==='move-all'?'select':'move-all'));
     $('textScaleInput').addEventListener('change',ev=>setGlobalTextPercent(ev.target.value));
     $('textToggleBtn').addEventListener('click',setTextVisibility);
     $('printPreviewBtn').addEventListener('click',openPrintPreview);
@@ -1147,6 +1241,9 @@
       const target=event.target;
       if(target instanceof HTMLElement && (target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;
       if($('confirmDialog').open||$('printDialog').open||$('clearCanvasDialog').open)return;
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='a'){
+        event.preventDefault();setTool('move-all');return;
+      }
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){
         event.preventDefault();if(event.shiftKey)redo();else undo();return;
       }
@@ -1160,7 +1257,7 @@
       if(event.code==='Space'&&!toolBeforeSpace){
         event.preventDefault();toolBeforeSpace=settings.tool;setTool('pan');return;
       }
-      const map={v:'select',e:'delete',p:'pan',w:'wall',d:'door',s:'shutter',l:'lot',b:'box',g:'green',k:'lock',t:'label'};
+      const map={v:'select',a:'move-all',e:'delete',p:'pan',w:'wall',d:'door',s:'shutter',l:'lot',b:'box',g:'green',k:'lock',t:'label'};
       if(!event.ctrlKey&&!event.metaKey&&!event.altKey&&map[event.key.toLowerCase()])setTool(map[event.key.toLowerCase()]);
     });
     document.addEventListener('keyup',event=>{
