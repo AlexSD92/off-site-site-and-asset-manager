@@ -76,14 +76,16 @@
     clearTimeout(saveTimer);saveTimer=null;
     if(recoveryBlocked){
       storageStatus('Local data needs recovery — export your existing backup', true);
-      return;
+      return false;
     }
     try {
       localStorage.setItem(STORE_KEY,JSON.stringify(state));
       storageStatus(`Saved locally at ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`);
+      return true;
     } catch (err) {
       storageStatus('Not saved — browser storage unavailable', true);
       toast('Local browser storage is unavailable. Export JSON to back up your plan.');
+      return false;
     }
   }
   function scheduleSave() {
@@ -224,6 +226,46 @@
       dialog.addEventListener('close',onClose);dialog.showModal();
     });
   }
+  function requestClearCanvas(){
+    if(!project.objects.length){toast('This canvas is already empty.');return;}
+    if(recoveryBlocked){toast('Existing browser storage needs recovery. Do not clear this canvas.');return;}
+    const lots=project.objects.filter(o=>o.type==='lot').length;
+    const other=project.objects.length-lots;
+    $('clearCanvasScope').textContent=`Site: “${project.name}”. This will permanently remove ${project.objects.length} item(s): ${lots} lot(s) and ${other} other item(s), including invoice references, locks and their keys, structures and labels.`;
+    $('clearCanvasPhrase').value='';
+    $('clearCanvasUnderstand').checked=false;
+    $('clearCanvasConfirm').disabled=true;
+    $('clearCanvasDialog').showModal();
+    $('clearCanvasPhrase').focus();
+  }
+  function checkClearCanvasConfirmation(){
+    $('clearCanvasConfirm').disabled=$('clearCanvasPhrase').value!=='CLEAR'||!$('clearCanvasUnderstand').checked;
+  }
+  function clearCanvasPermanently(){
+    if(!$('clearCanvasDialog').open || $('clearCanvasPhrase').value!=='CLEAR' || !$('clearCanvasUnderstand').checked)return false;
+    if(recoveryBlocked){toast('Unable to clear: stored site needs recovery.');return false;}
+    if(!project.objects.length){$('clearCanvasDialog').close();return false;}
+    const oldObjects=project.objects,oldNextLot=project.nextLot,oldUpdatedAt=project.updatedAt;
+    project.objects=[];
+    project.nextLot=1;
+    project.updatedAt=new Date().toISOString();
+    // This operation is intentionally outside normal Undo history. Save
+    // synchronously before discarding the previous state or the Undo stack.
+    if(!storeNow()){
+      project.objects=oldObjects;
+      project.nextLot=oldNextLot;
+      project.updatedAt=oldUpdatedAt;
+      refreshAll();
+      toast('Nothing was cleared: the browser could not save this change.');
+      return false;
+    }
+    history=[];future=[];settings.selected=null;drawing=null;pinch=null;pointers.clear();
+    refreshAll();
+    setTool('select');
+    $('clearCanvasDialog').close();
+    toast('Canvas cleared. This operation cannot be undone.');
+    return true;
+  }
   async function deleteSite(){
     if(!await confirmAction('Delete this site?',`Permanently remove “${project.name}” from this browser? Export a JSON backup first if you might need it.`))return;
     const index=state.projects.findIndex(p=>p.id===project.id);state.projects.splice(index,1);
@@ -275,7 +317,6 @@
     $('lotsTabCount').textContent=lots.length;
     $('canvasTitle').textContent=project.name;
     $('siteDimensions').textContent=`${fmt(project.cols*project.cellMeters)} × ${fmt(project.rows*project.cellMeters)} m`;
-    $('emptyGuide').classList.toggle('hidden',project.objects.length>0);
     $('undoBtn').disabled=!history.length;$('redoBtn').disabled=!future.length;
     const visible=project.showText!==false;
     $('textToggleBtn').textContent=visible?'Aa · Show':'Aa · Hidden';
@@ -291,7 +332,9 @@
       el.classList.toggle('active',el.dataset.tool===tool);
       el.setAttribute('aria-pressed',el.dataset.tool===tool?'true':'false');
     }
-    $('canvasNote').textContent=TOOLS[tool];$('activeToolHelp').textContent=TOOLS[tool];
+    $('canvasNote').textContent=project.objects.length===0 && tool==='select'
+      ? 'Empty site — choose Draw Lot, Wall or another tool to start.' : TOOLS[tool];
+    $('activeToolHelp').textContent=TOOLS[tool];
     $('mobilePan').classList.toggle('active',tool==='pan');$('mobileGreen').classList.toggle('green-active',tool==='green');
     $('mobileDelete').classList.toggle('delete-active',tool==='delete');
     drawSoon();
@@ -765,7 +808,13 @@
         <div class="divider"></div><h3 class="panel-title">Lot Colour Key</h3><div class="legend-grid">${Object.values(STATUS).map(s=>`<div class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${s.label}</div>`).join('')}</div>
         <div class="helper-card"><strong>How local saving works</strong><p>Every edit is saved automatically in this browser on this device. Export JSON to share your plan, transfer it to another device or keep a backup. Clearing browser data can erase local copies.</p></div>
         <div class="panel-actions"><button class="btn btn-light" data-action="png">Save plan as PNG</button><button class="btn btn-light" data-action="csv">Export lots CSV</button><button class="btn btn-light" data-action="duplicateSite">Duplicate site</button></div>
-        <button class="danger-link" data-action="deleteSite">Delete site from browser</button>`;
+        <div class="divider"></div>
+        <div class="clear-canvas-settings">
+          <strong>Start this site again</strong>
+          <p>Erase every placed lot, invoice link, wall, lock, key and label. Clearing the canvas cannot be undone. Back up your site first.</p>
+          <button class="danger-link" data-action="clearCanvas">Clear canvas permanently…</button>
+        </div>
+        <button class="danger-link" data-action="deleteSite">Delete entire site from browser</button>`;
       return;
     }
     const title={lot:`Lot ${o.number||'—'}`,wall:'Wall',door:'Doorway',shutter:'Roller Shutter',lock:'Lock & Key',label:'Text Label'}[o.type];
@@ -878,6 +927,7 @@
     if(action==='toggleText'){setTextVisibility();return;}
     if(action==='duplicateSite'){duplicateSite();return;}
     if(action==='deleteSite'){await deleteSite();return;}
+    if(action==='clearCanvas'){requestClearCanvas();return;}
     if(action==='drawLot'){setTool('lot');return;}
     if(action==='drawLock'){setTool('lock');return;}
     if(action==='drawShutter'){setTool('shutter');return;}
@@ -977,6 +1027,11 @@
     $('importBtn').addEventListener('click',()=>$('importFile').click());
     $('importFile').addEventListener('change',event=>{importJSON(event.target.files[0]);event.target.value='';});
     $('undoBtn').addEventListener('click',undo);$('redoBtn').addEventListener('click',redo);
+    $('clearCanvasBackup').addEventListener('click',exportJSON);
+    $('clearCanvasCancel').addEventListener('click',()=>$('clearCanvasDialog').close());
+    $('clearCanvasPhrase').addEventListener('input',checkClearCanvasConfirmation);
+    $('clearCanvasUnderstand').addEventListener('change',checkClearCanvasConfirmation);
+    $('clearCanvasConfirm').addEventListener('click',clearCanvasPermanently);
     $('fitBtn').addEventListener('click',fitView);
     $('textScaleInput').addEventListener('change',ev=>setGlobalTextPercent(ev.target.value));
     $('textToggleBtn').addEventListener('click',setTextVisibility);
@@ -991,7 +1046,6 @@
     });
     $('zoomIn').addEventListener('click',()=>zoomAt(1.25,view.width/2,view.height/2));
     $('zoomOut').addEventListener('click',()=>zoomAt(.8,view.width/2,view.height/2));
-    $('quickLotBtn').addEventListener('click',()=>setTool('lot'));
     $('mobilePan').addEventListener('click',()=>setTool(settings.tool==='pan'?'select':'pan'));
     $('mobileGreen').addEventListener('click',()=>setTool(settings.tool==='green'?'select':'green'));
     $('mobileDelete').addEventListener('click',()=>setTool(settings.tool==='delete'?'select':'delete'));
@@ -1029,7 +1083,7 @@
     document.addEventListener('keydown',event=>{
       const target=event.target;
       if(target instanceof HTMLElement && (target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;
-      if($('confirmDialog').open||$('printDialog').open)return;
+      if($('confirmDialog').open||$('printDialog').open||$('clearCanvasDialog').open)return;
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){
         event.preventDefault();if(event.shiftKey)redo();else undo();return;
       }

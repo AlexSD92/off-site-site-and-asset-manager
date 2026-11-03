@@ -88,7 +88,7 @@
         </div>
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="siteCanvas" aria-label="Interactive scaled auction site plan"></canvas>
-          <div id="emptyGuide" class="canvas-guide"><div class="guide-symbol">✦</div><strong>Start mapping your site</strong><span>Choose <b>Draw Lot</b> or <b>Wall</b>, then drag on the grid.</span><button id="quickLotBtn" class="btn btn-primary">+ Draw first lot</button></div>
+          
           <div class="scale-badge" aria-live="polite"><span id="scaleMeasure">5 m</span><div id="scaleLine" class="scale-line"></div><small id="scaleHint">1 square = 1 m</small></div>
           <div class="canvas-note" id="canvasNote">Select a tool to get started</div>
           <div class="mobile-canvas-controls"><button id="mobilePan" title="Toggle pan mode">Pan</button><button id="mobileGreen" title="Toggle green-off mode">✓ Clear</button><button id="mobileDelete" title="Tap an item to delete (undo available)">⌫ Delete</button></div>
@@ -123,6 +123,25 @@
     </section>
   </div>
   <div class="print-dialog-footer"><span id="printSheetSize"></span><span>Preview options do not change the saved site.</span></div>
+</dialog>
+<dialog id="clearCanvasDialog" class="clear-canvas-dialog" aria-labelledby="clearCanvasTitle">
+  <div class="clear-canvas-content">
+    <div class="clear-canvas-icon" aria-hidden="true">!</div>
+    <h3 id="clearCanvasTitle">Clear this canvas permanently?</h3>
+    <p class="clear-canvas-warning"><strong>WARNING: This action cannot be undone.</strong> Undo will not restore deleted items.</p>
+    <p id="clearCanvasScope"></p>
+    <p>Only the current site's objects will be removed. The site name, grid dimensions, text settings and your other sites remain. New lot numbers start at 1.</p>
+    <button id="clearCanvasBackup" class="btn btn-light" type="button">Download a JSON backup first</button>
+    <div class="clear-canvas-verify">
+      <label for="clearCanvasPhrase">Type <strong>CLEAR</strong> to unlock permanent deletion:</label>
+      <input id="clearCanvasPhrase" type="text" placeholder="Type CLEAR" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label class="clear-canvas-ack"><input id="clearCanvasUnderstand" type="checkbox"><span>I understand this cannot be undone and the site's unexported drawings will be lost.</span></label>
+    </div>
+    <div class="clear-canvas-actions">
+      <button id="clearCanvasCancel" class="btn btn-subtle" type="button">Cancel</button>
+      <button id="clearCanvasConfirm" class="btn btn-danger" type="button" disabled>Clear canvas permanently</button>
+    </div>
+  </div>
 </dialog>
 <dialog id="confirmDialog" class="confirm-dialog"><form method="dialog"><h3 id="confirmTitle">Confirm</h3><p id="confirmText"></p><div class="dialog-actions"><button class="btn btn-subtle" value="cancel">Cancel</button><button class="btn btn-danger" id="confirmAccept" value="confirm">Confirm</button></div></form></dialog>
 </body>

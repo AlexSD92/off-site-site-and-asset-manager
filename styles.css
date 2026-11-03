@@ -93,3 +93,25 @@
   .print-map-area{flex:1 1 auto!important;min-height:0!important}
   .print-page-header,.print-page-footer,.print-map-area{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+/* Site reset is intentionally separate from ordinary delete/undo. */
+.clear-canvas-settings{border:1px solid #f2d0ce;background:#fff7f5;border-radius:10px;padding:13px 14px;margin:12px 0 8px}
+.clear-canvas-settings strong{color:#923b37;font-size:12px}
+.clear-canvas-settings p{font-size:11px;color:#805654;line-height:1.5;margin:6px 0}
+.clear-canvas-settings .danger-link{padding:7px 0;font-weight:850}
+.clear-canvas-dialog{width:min(525px,calc(100vw - 22px));max-width:none;max-height:min(92dvh,800px);border:1px solid #e9bcb8;border-radius:16px;padding:0;color:#25384d;box-shadow:0 25px 80px #192e4a80;overflow:auto}
+.clear-canvas-dialog::backdrop{background:#111e31b8}
+.clear-canvas-content{padding:25px 26px}
+.clear-canvas-icon{display:grid;place-items:center;width:43px;height:43px;background:#feebea;color:#aa3030;border-radius:50%;font-size:25px;font-weight:900;margin-bottom:8px}
+.clear-canvas-content h3{font-size:20px;line-height:1.2;margin:7px 0 14px}
+.clear-canvas-content p{font-size:12px;color:#526479;line-height:1.6;margin:10px 0}
+.clear-canvas-content .clear-canvas-warning{background:#fff0ec;border-left:4px solid #c9423b;padding:10px 12px;color:#92372f;border-radius:5px}
+.clear-canvas-verify{margin-top:16px;padding:15px;background:#f7f9fc;border:1px solid #e0e6f0;border-radius:9px;display:flex;flex-direction:column;gap:10px}
+.clear-canvas-verify>label:first-child{font-size:12px;font-weight:750;color:#38495f}
+.clear-canvas-verify input[type="text"]{min-height:42px;padding:9px 12px;width:100%;border:1px solid #cbd4e0;border-radius:7px;background:#fff;color:#1f324a;font-weight:750;letter-spacing:.05em}
+.clear-canvas-verify input[type="text"]:focus{outline:2px solid #598bd2;outline-offset:1px}
+.clear-canvas-ack{display:flex;gap:10px;align-items:flex-start;font-size:11px;line-height:1.4;color:#44566b;cursor:pointer}
+.clear-canvas-ack input{margin:2px 0 0;flex:0 0 auto;width:17px;height:17px;accent-color:#bf423a}
+.clear-canvas-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}
+.clear-canvas-actions .btn-danger:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:480px){.clear-canvas-content{padding:18px 16px}.clear-canvas-actions .btn{flex:1;min-width:125px}}
