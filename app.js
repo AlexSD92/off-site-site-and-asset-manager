@@ -21,6 +21,7 @@
     door: 'Drag along an opening to mark a doorway, or tap to add a 1-square door.',
     shutter: 'Drag along the entrance to draw a roller shutter.',
     lot: 'Drag across the grid to draw a lot footprint. Tap to create a 3 × 2 lot.',
+    box: 'Drag to draw a coloured area or hazard box. Customise its label, colour and notes in Details; no invoice required.',
     green: 'Tap any lot to mark it cleared (or tap again to undo).',
     delete: 'Tap an item to delete it. Undo restores it. Dragging the view won’t delete anything.',
     lock: 'Tap the grid to mark a lock. Add its key reference in Details.',
@@ -99,25 +100,31 @@
     if (!Number.isFinite(cols)||!Number.isFinite(rows)||cols<8||cols>250||rows<8||rows>250) throw new Error('Invalid site dimensions.');
     if (!Number.isFinite(cellMeters)||cellMeters<.1||cellMeters>100) throw new Error('Invalid grid scale.');
     if (src.objects.length>8000) throw new Error('The site file contains too many objects.');
-    const accepted = new Set(['wall','door','shutter','lot','lock','label']);
+    const accepted = new Set(['wall','door','shutter','lot','box','lock','label']);
     const objects=[];
     const unique=new Set();
     for (const raw of src.objects) {
       if (!raw || !accepted.has(raw.type)) continue;
       const obj={type:raw.type,id: typeof raw.id==='string' && !unique.has(raw.id) ? raw.id.slice(0,100) : nextId()};
       unique.add(obj.id);
-      const numericKeys = obj.type==='lot' ? ['x','y','w','h'] :
+      const numericKeys = ['lot','box'].includes(obj.type) ? ['x','y','w','h'] :
         ['wall','door','shutter'].includes(obj.type) ? ['x1','y1','x2','y2'] : ['x','y'];
       if (numericKeys.some(key=>!Number.isFinite(Number(raw[key]))||Math.abs(Number(raw[key]))>100000)) continue;
       for (const key of numericKeys) obj[key]=Math.round(Number(raw[key]));
+      if (['lot','box'].includes(obj.type)) {
+        obj.w=minmax(obj.w,1,250);obj.h=minmax(obj.h,1,250);
+      }
       if (obj.type==='lot') {
-        obj.w=minmax(obj.w,1,250); obj.h=minmax(obj.h,1,250);
         obj.number=String(raw.number ?? '').slice(0,90);
         obj.invoice=String(raw.invoice ?? '').slice(0,200);
         obj.status=STATUS[raw.status] ? raw.status:'pending';
         obj.color=/^#[0-9a-f]{6}$/i.test(raw.color||'') ? raw.color : '';
       }
       if (['wall','door','shutter','lock'].includes(obj.type)) obj.label=String(raw.label??'').slice(0,140);
+      if(obj.type==='box'){
+        obj.label=String(raw.label??'Area').slice(0,140);
+        obj.color=/^#[0-9a-f]{6}$/i.test(raw.color||'')?raw.color:'#e99d3e';
+      }
       if (obj.type==='label') obj.text=String(raw.text??'Area').slice(0,150);
       if (raw.fontSize !== undefined) {
         const size=Number(raw.fontSize);
@@ -377,7 +384,7 @@
   }
   function centerOn(o){
     let x,y;
-    if(o.type==='lot'){x=o.x+o.w/2;y=o.y+o.h/2;}
+    if(o.type==='lot'||o.type==='box'){x=o.x+o.w/2;y=o.y+o.h/2;}
     else if(['wall','door','shutter'].includes(o.type)){x=(o.x1+o.x2)/2;y=(o.y1+o.y2)/2;}
     else{x=o.x;y=o.y;}
     view.offsetX=view.width/2-x*scale();view.offsetY=view.height/2-y*scale();drawSoon();
@@ -421,7 +428,7 @@
 }
   function baseFont(o) {
  if(o.type==='lot')return Math.min(.56,Math.max(.26,o.w/5));
- if(o.type==='label')return .44;
+ if(o.type==='label'||o.type==='box')return .44;
  if(o.type==='lock')return .27;
  return .28;
 }
@@ -457,6 +464,23 @@
    c.fillText(o.label.slice(0,40),midX,midY-.17,Math.max(1.2,Math.hypot(o.x2-o.x1,o.y2-o.y1)+1));
  }
 }
+  function drawBox(c,o,showText=true){
+    if(o.w<=0||o.h<=0)return;
+    const color=/^#[0-9a-f]{6}$/i.test(o.color||'')?o.color:'#e99d3e';
+    c.save();
+    c.fillStyle=color;c.globalAlpha=.22;
+    roundRect(c,o.x+.04,o.y+.04,Math.max(.1,o.w-.08),Math.max(.1,o.h-.08),.12);c.fill();
+    c.globalAlpha=1;c.strokeStyle=color;c.lineWidth=.11;
+    roundRect(c,o.x+.04,o.y+.04,Math.max(.1,o.w-.08),Math.max(.1,o.h-.08),.12);c.stroke();
+    c.fillStyle=color;roundRect(c,o.x+.07,o.y+.07,Math.min(.18,o.w*.2),Math.min(.18,o.h*.2),.04);c.fill();
+    if(showText&&o.label?.trim()){
+      c.beginPath();c.rect(o.x+.1,o.y+.12,Math.max(.1,o.w-.2),Math.max(.1,o.h-.24));c.clip();
+      c.fillStyle='#24354a';c.font=`750 ${fontFor(o,baseFont(o))}px system-ui,sans-serif`;
+      c.textAlign='center';c.textBaseline='middle';
+      c.fillText(o.label.slice(0,90),o.x+o.w/2,o.y+o.h/2,Math.max(.2,o.w-.25));
+    }
+    c.restore();
+  }
   function drawLot(c,o,showText=true) {
  if(o.w<=0||o.h<=0)return;
  const color=o.color||STATUS[o.status]?.color||STATUS.pending.color;
@@ -510,7 +534,7 @@
 }
   function drawSelection(c,o){
     c.save();c.strokeStyle='#2479f0';c.lineWidth=2/scale();c.setLineDash([5/scale(),4/scale()]);
-    if(o.type==='lot'){
+    if(o.type==='lot'||o.type==='box'){
       c.strokeRect(o.x-.08,o.y-.08,o.w+.16,o.h+.16);c.setLineDash([]);
       c.fillStyle='#fff';c.strokeStyle='#2577e9';c.lineWidth=1.4/scale();
       for(const [x,y] of [[o.x,o.y],[o.x+o.w,o.y],[o.x,o.y+o.h],[o.x+o.w,o.y+o.h]]){
@@ -525,7 +549,7 @@
     c.restore();
   }
   function objectsInDrawOrder(){
-    const weights={wall:0,door:1,shutter:1,lot:2,lock:3,label:4};
+    const weights={wall:0,door:1,shutter:1,box:1.5,lot:2,lock:3,label:4};
     return [...project.objects].sort((a,b)=>weights[a.type]-weights[b.type]);
   }
   function paint(c,width,height,ox,oy,px,options={}){
@@ -549,15 +573,17 @@
       c.save();
       if(['wall','door','shutter'].includes(o.type))drawStructure(c,o,showText);
       else if(o.type==='lot')drawLot(c,o,showText);
+      else if(o.type==='box')drawBox(c,o,showText);
       else if(o.type==='lock')drawLock(c,o,showText);
       else if(o.type==='label'&&showText)drawLabel(c,o);
       c.restore();
     }
     if(!options.export){
       const selected=getSelected();if(selected)drawSelection(c,selected);
-      if(drawing && drawing.preview && ['wall','door','shutter','lot'].includes(drawing.preview.type)){
+      if(drawing && drawing.preview && ['wall','door','shutter','lot','box'].includes(drawing.preview.type)){
         c.save();c.globalAlpha=.7;c.setLineDash([.15,.12]);
         if(drawing.preview.type==='lot')drawLot(c,{...drawing.preview,number:'NEW',status:'reserved',invoice:''});
+        else if(drawing.preview.type==='box')drawBox(c,{...drawing.preview,color:'#e99d3e',label:'Area'},project.showText!==false);
         else drawStructure(c,drawing.preview);
         c.setLineDash([]);c.restore();
       }
@@ -601,7 +627,7 @@
     const a=objectsInDrawOrder().reverse();
     for(const o of a){
       if(type&&o.type!==type)continue;
-      if(o.type==='lot'&&p.x>=o.x-.07&&p.x<=o.x+o.w+.07&&p.y>=o.y-.07&&p.y<=o.y+o.h+.07)return o;
+      if(['lot','box'].includes(o.type)&&p.x>=o.x-.07&&p.x<=o.x+o.w+.07&&p.y>=o.y-.07&&p.y<=o.y+o.h+.07)return o;
       if(['wall','door','shutter'].includes(o.type)&&closestLineDistance(p,o)<=Math.max(.22,9/scale()))return o;
       if(o.type==='lock'&&Math.hypot(p.x-o.x,p.y-o.y)<=Math.max(.4,12/scale()))return o;
       if(o.type==='label'){
@@ -620,7 +646,7 @@
     toast(`${o.type==='lot'?`Lot ${o.number||'—'}`:o.label||o.type} deleted · Undo to restore`);
     return true;
   }
-  function isLotCorner(p,o){return o?.type==='lot'&&Math.hypot(p.x-(o.x+o.w),p.y-(o.y+o.h))<Math.max(.3,12/scale());}
+  function isRectangleCorner(p,o){return ['lot','box'].includes(o?.type)&&Math.hypot(p.x-(o.x+o.w),p.y-(o.y+o.h))<Math.max(.3,12/scale());}
   function segment(start,end,type){
     let a=snapCell(start),b=snapCell(end);
     if(a.x===b.x&&a.y===b.y){b={x:minmax(a.x+(type==='shutter'?3:type==='wall'?4:1),0,project.cols),y:a.y};}
@@ -644,6 +670,8 @@
     const obj={id:nextId(),type,notes:''};
     if(type==='lot'){
       Object.assign(obj,rectFromPoints(a,b),{number:String(project.nextLot++),invoice:'',status:'pending',color:''});
+    }else if(type==='box'){
+      Object.assign(obj,rectFromPoints(a,b),{label:'Area',color:'#e99d3e'});
     }else if(['wall','door','shutter'].includes(type)){
       const s=segment(a,b,type);if(!s)return null;
       Object.assign(obj,s,{label:type==='shutter'?'Roller shutter':type==='door'?'Doorway':''});
@@ -655,7 +683,7 @@
     return obj;
   }
   function moveObject(o,original,dx,dy){
-    if(o.type==='lot'){
+    if(o.type==='lot'||o.type==='box'){
       o.x=minmax(original.x+dx,0,Math.max(0,project.cols-o.w));
       o.y=minmax(original.y+dy,0,Math.max(0,project.rows-o.h));
     } else if(['wall','door','shutter'].includes(o.type)){
@@ -706,7 +734,7 @@
     if(settings.tool==='select'){
       const target=hitObject(p);
       if(!target){selectObject(null);drawing=null;return;}
-      const resize=target.id===settings.selected&&isLotCorner(p,target);
+      const resize=target.id===settings.selected&&isRectangleCorner(p,target);
       selectObject(target.id);
       drawing={action:resize?'resize':'move',id:target.id,original:clone(target),before:snapshot(),startWorld:p};
       return;
@@ -725,7 +753,7 @@
     const p=toWorld(ev.clientX,ev.clientY);
     if(drawing.action==='create'){
       drawing.endWorld=p;
-      if(drawing.type==='lot')drawing.preview={type:'lot',...rectFromPoints(drawing.startWorld,p)};
+      if(['lot','box'].includes(drawing.type))drawing.preview={type:drawing.type,...rectFromPoints(drawing.startWorld,p)};
       else if(['wall','door','shutter'].includes(drawing.type)){
         const s=segment(drawing.startWorld,p,drawing.type);drawing.preview=s?{type:drawing.type,...s}:null;
       }
@@ -766,6 +794,7 @@
     commit(before);selectObject(object.id);
     // Keep a drawing tool active so the user can create several items in a row.
     if(object.type==='lot')toast(`Lot ${object.number} added — set invoice details in the panel`);
+    else if(object.type==='box')toast('Area box added — choose a label and colour in Details');
     else if(object.type==='lock')toast('Lock added — record its key reference in Details');
   }
 
@@ -805,6 +834,12 @@
         ${field('Size of all map text (%)','textScalePercent',Math.round((project.textScale??1)*100),'number','min="50" max="250" step="5"')}
         <p class="field-help">Scales lot numbers, invoices, labels and access references together. Individual font adjustments remain independent.</p>
         <div class="panel-actions"><button class="btn btn-light" data-action="toggleText">${project.showText===false?'Show all map text':'Hide all map text'}</button><button class="btn btn-light" data-action="printPreview">Print preview</button></div>
+        <div class="divider"></div><h3 class="panel-title">Areas & hazards</h3>
+        <p class="field-help">Draw boxes using Area / Hazard Box (B). Select one below to edit it, even if it overlaps another object.</p>
+        ${project.objects.some(x=>x.type==='box') ?
+          `<div class="box-register">${project.objects.filter(x=>x.type==='box').map(x=>
+            `<button type="button" class="box-register-item" data-select="${e(x.id)}"><span class="box-swatch" style="background:${x.color}"></span><span>${e(x.label||'Unlabelled area')}</span><span class="box-register-size">${x.w} × ${x.h}</span></button>`).join('')}</div>`
+          : '<p class="field-help">No area boxes yet.</p>'}
         <div class="divider"></div><h3 class="panel-title">Lot Colour Key</h3><div class="legend-grid">${Object.values(STATUS).map(s=>`<div class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${s.label}</div>`).join('')}</div>
         <div class="helper-card"><strong>How local saving works</strong><p>Every edit is saved automatically in this browser on this device. Export JSON to share your plan, transfer it to another device or keep a backup. Clearing browser data can erase local copies.</p></div>
         <div class="panel-actions"><button class="btn btn-light" data-action="png">Save plan as PNG</button><button class="btn btn-light" data-action="csv">Export lots CSV</button><button class="btn btn-light" data-action="duplicateSite">Duplicate site</button></div>
@@ -817,7 +852,7 @@
         <button class="danger-link" data-action="deleteSite">Delete entire site from browser</button>`;
       return;
     }
-    const title={lot:`Lot ${o.number||'—'}`,wall:'Wall',door:'Doorway',shutter:'Roller Shutter',lock:'Lock & Key',label:'Text Label'}[o.type];
+    const title={lot:`Lot ${o.number||'—'}`,box:`Area: ${o.label||'Untitled'}`,wall:'Wall',door:'Doorway',shutter:'Roller Shutter',lock:'Lock & Key',label:'Text Label'}[o.type];
     let html=`<h2 class="panel-title">${e(title)} <span style="font-size:10px;font-weight:600;color:#a2b0c0">· EDIT</span></h2><p class="panel-description">Changes save automatically when you finish editing a field.</p>`;
     if(o.type==='lot'){
       html+=field('Lot number','number',o.number)+field('Invoice number(s)','invoice',o.invoice,'text','placeholder="e.g. INV-1042"');
@@ -830,6 +865,21 @@
       html+=fontControlHtml(o);
       html+=field('Notes / buyer / collection details','notes',o.notes,'textarea');
       html+=`<div class="panel-actions"><button class="btn btn-success" data-action="clearSelected">✓ ${o.status==='cleared'?'Reopen lot':'Green off lot'}</button><button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
+    }else if(o.type==='box'){
+      html+=field('Area / hazard label','label',o.label,'text','placeholder="e.g. Hazard, Obstruction, Keep Clear"');
+      html+=`<div class="field"><label>Optional quick presets</label><div class="box-presets">
+        <button type="button" data-box-preset="hazard">Hazard</button>
+        <button type="button" data-box-preset="obstruction">Obstruction</button>
+        <button type="button" data-box-preset="keepclear">Keep clear</button>
+        <button type="button" data-box-preset="storage">Storage</button>
+        <button type="button" data-box-preset="workarea">Work area</button>
+      </div></div>`;
+      html+=field('Box colour','color',o.color||'#e99d3e','color');
+      html+=`<p class="field-help">A box has no invoice, lot number or clearance status. Presets are optional: you can freely change its text and colour.</p>`;
+      html+=`<div class="divider"></div><h3 class="panel-title">Area dimensions</h3>${fieldsXY(o,['x','y','w','h'])}`;
+      html+=`<p class="field-help">Physical size: ${fmt(o.w*project.cellMeters)} × ${fmt(o.h*project.cellMeters)} m. Drag to move, or select then drag the bottom-right corner to resize.</p>`;
+      html+=fontControlHtml(o)+field('Area / safety notes','notes',o.notes,'textarea');
+      html+=`<div class="panel-actions"><button class="btn btn-light" data-action="duplicateObject">Duplicate box</button></div>`;
     }else if(o.type==='lock'){
       html+=field('Lock label / reference','label',o.label)+field('Associated key ID','keyRef',o.keyRef,'text','placeholder="e.g. Key K-03"');
       html+=field('Key held by / location','keyHolder',o.keyHolder,'text','placeholder="e.g. Site manager / key safe"');
@@ -900,7 +950,7 @@
     if(['x','y','w','h','x1','y1','x2','y2'].includes(key)){
       if(value.trim()===''||!Number.isFinite(Number(value))) {renderPanel();return;}
       value=Math.round(Number(value));
-      if(obj.type==='lot'){
+      if(obj.type==='lot'||obj.type==='box'){
         if(key==='w')value=minmax(value,1,project.cols-obj.x);
         else if(key==='h')value=minmax(value,1,project.rows-obj.y);
         else if(key==='x')value=minmax(value,0,project.cols-obj.w);
@@ -918,6 +968,17 @@
     if(key==='color'&&!/^#[0-9a-f]{6}$/i.test(value))return;
     obj[key]=value;
     commit(before);
+  }
+  function setBoxPreset(key){
+    const o=getSelected();if(!o||o.type!=='box')return;
+    const options={
+      hazard:['Hazard','#e36b5f'],obstruction:['Obstruction','#e6a044'],
+      keepclear:['Keep Clear','#e9c658'],storage:['Storage Area','#4c91cb'],
+      workarea:['Work Area','#8b75c8']
+    };
+    const chosen=options[key];if(!chosen)return;
+    const before=snapshot();o.label=chosen[0];o.color=chosen[1];commit(before);
+    toast(`Area labelled ${o.label}; you can customise it further.`);
   }
   async function handleAction(action){
     const o=getSelected();
@@ -951,8 +1012,8 @@
     if(action==='clearSelected')o.status=o.status==='cleared'?'pending':'cleared';
     if(action==='duplicateObject'){
       const copy=clone(o);copy.id=nextId();
-      if(copy.type==='lot'){
-        copy.number=String(project.nextLot++);
+      if(copy.type==='lot')copy.number=String(project.nextLot++);
+      if(copy.type==='lot'||copy.type==='box'){
         copy.x=minmax(copy.x+1,0,Math.max(0,project.cols-copy.w));
         copy.y=minmax(copy.y+1,0,Math.max(0,project.rows-copy.h));
       }
@@ -1073,6 +1134,8 @@
       const filter=event.target.closest('[data-filter]');
       if(filter){settings.lotFilter=filter.dataset.filter;for(const b of panel.querySelectorAll('[data-filter]'))b.classList.toggle('active',b===filter);renderLotList();return;}
       const card=event.target.closest('[data-select]');if(card){selectObject(card.dataset.select,true,true);return;}
+      const preset=event.target.closest('[data-box-preset]');
+      if(preset){setBoxPreset(preset.dataset.boxPreset);return;}
       const action=event.target.closest('[data-action]');if(action)handleAction(action.dataset.action);
     });
     panel.addEventListener('keydown',event=>{
@@ -1097,7 +1160,7 @@
       if(event.code==='Space'&&!toolBeforeSpace){
         event.preventDefault();toolBeforeSpace=settings.tool;setTool('pan');return;
       }
-      const map={v:'select',e:'delete',p:'pan',w:'wall',d:'door',s:'shutter',l:'lot',g:'green',k:'lock',t:'label'};
+      const map={v:'select',e:'delete',p:'pan',w:'wall',d:'door',s:'shutter',l:'lot',b:'box',g:'green',k:'lock',t:'label'};
       if(!event.ctrlKey&&!event.metaKey&&!event.altKey&&map[event.key.toLowerCase()])setTool(map[event.key.toLowerCase()]);
     });
     document.addEventListener('keyup',event=>{
