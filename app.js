@@ -56,7 +56,7 @@
 
   const createProject = (name='Untitled auction site') => ({
     id:nextId(), name, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
-    cols:48, rows:32, cellMeters:1, nextLot:1, objects:[]
+    cols:48, rows:32, cellMeters:1, nextLot:1, textScale:1, showText:true, objects:[]
   });
 
   function toast(msg) {
@@ -117,7 +117,7 @@
       }
       if (['wall','door','shutter','lock'].includes(obj.type)) obj.label=String(raw.label??'').slice(0,140);
       if (obj.type==='label') obj.text=String(raw.text??'Area').slice(0,150);
-      if (['label','lot'].includes(obj.type) && raw.fontSize !== undefined) {
+      if (raw.fontSize !== undefined) {
         const size=Number(raw.fontSize);
         if (Number.isFinite(size)) obj.fontSize=minmax(size,.15,2.5);
       }
@@ -134,7 +134,9 @@
       createdAt:typeof src.createdAt==='string'?src.createdAt:new Date().toISOString(),
       updatedAt:typeof src.updatedAt==='string'?src.updatedAt:new Date().toISOString(),
       cols:Math.round(cols),rows:Math.round(rows),cellMeters,
-      nextLot:minmax(Math.round(Number(src.nextLot)||1),1,1000000),objects
+      nextLot:minmax(Math.round(Number(src.nextLot)||1),1,1000000),
+      textScale:Number.isFinite(Number(src.textScale)) && src.textScale!=null ? minmax(Number(src.textScale),.5,2.5) : 1,
+      showText:src.showText!==false,objects
     };
   }
   function load() {
@@ -275,6 +277,11 @@
     $('siteDimensions').textContent=`${fmt(project.cols*project.cellMeters)} × ${fmt(project.rows*project.cellMeters)} m`;
     $('emptyGuide').classList.toggle('hidden',project.objects.length>0);
     $('undoBtn').disabled=!history.length;$('redoBtn').disabled=!future.length;
+    const visible=project.showText!==false;
+    $('textToggleBtn').textContent=visible?'Aa · Show':'Aa · Hidden';
+    $('textToggleBtn').setAttribute('aria-pressed',String(visible));
+    $('textToggleBtn').classList.toggle('text-muted',!visible);
+    if(document.activeElement!==$('textScaleInput'))$('textScaleInput').value=Math.round((project.textScale??1)*100);
   }
   function setTool(tool){
     if(!TOOLS[tool])return;
@@ -366,77 +373,98 @@
     c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);
     c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();
   }
-  function drawStructure(c,o){
-    if(o.type==='wall'){
-      c.strokeStyle=COLORS.wall;c.lineWidth=.17;c.lineCap='square';line(c,o.x1,o.y1,o.x2,o.y2);
-    }
-    if(o.type==='door'){
-      c.lineCap='butt';c.strokeStyle='#fafcfe';c.lineWidth=.28;line(c,o.x1,o.y1,o.x2,o.y2);
-      c.strokeStyle=COLORS.door;c.lineWidth=.065;line(c,o.x1,o.y1,o.x2,o.y2);
-      const a=Math.atan2(o.y2-o.y1,o.x2-o.x1);const d=Math.hypot(o.x2-o.x1,o.y2-o.y1);
-      if(d>0){
-        c.strokeStyle=COLORS.door;c.lineWidth=.045;c.setLineDash([.09,.09]);
-        c.beginPath();c.arc(o.x1,o.y1,Math.min(1.8,d),a,a+.85);c.stroke();c.setLineDash([]);
-        c.fillStyle=COLORS.door;c.beginPath();c.arc(o.x1,o.y1,.11,0,Math.PI*2);c.fill();
-      }
-    }
-    if(o.type==='shutter'){
-      c.strokeStyle='#fafcfe';c.lineWidth=.35;line(c,o.x1,o.y1,o.x2,o.y2);
-      c.strokeStyle=COLORS.shutter;c.lineCap='butt';c.lineWidth=.14;line(c,o.x1,o.y1,o.x2,o.y2);
-      const len=Math.hypot(o.x2-o.x1,o.y2-o.y1);
-      if(len>.1){
-        const dx=(o.x2-o.x1)/len,dy=(o.y2-o.y1)/len;
-        c.strokeStyle='#a06a27';c.lineWidth=.06;
-        for(let i=.28;i<len;i+=.37){let x=o.x1+dx*i,y=o.y1+dy*i;line(c,x-dy*.15,y+dx*.15,x+dy*.15,y-dx*.15);}
-      }
-    }
-  }
-  function drawLot(c,o){
-    if(o.w<=0||o.h<=0)return;
-    const color=o.color||STATUS[o.status]?.color||STATUS.pending.color;
-    c.fillStyle=color;c.globalAlpha=.2;roundRect(c,o.x+.06,o.y+.06,o.w-.12,o.h-.12,.17);c.fill();c.globalAlpha=1;
-    c.lineWidth=.085;c.strokeStyle=color;roundRect(c,o.x+.045,o.y+.045,o.w-.09,o.h-.09,.13);c.stroke();
-    if(o.status==='cleared'){
-      c.fillStyle=color;roundRect(c,o.x+.05,o.y+.05,Math.min(.22,o.w/4),o.h-.1,.06);c.fill();
-    }
-    const f=o.fontSize??Math.min(.56,Math.max(.26,o.w/5));
-    c.textAlign='center';c.textBaseline='middle';c.fillStyle='#263a52';c.font=`800 ${f}px system-ui,sans-serif`;
-    const main=o.number?`LOT ${o.number}`:'LOT';
-    const label=main.length>18?main.slice(0,17)+'…':main;
-    c.save();c.beginPath();c.rect(o.x+.08,o.y+.1,Math.max(0,o.w-.16),Math.max(0,o.h-.2));c.clip();
-    c.fillText(label,o.x+o.w/2,o.y+o.h/2-(o.invoice?.length? .17:0),Math.max(.2,o.w-.2));
-    if(o.invoice){
-      c.fillStyle='#61768d';c.font=`600 ${Math.min(.29,f*.65)}px system-ui,sans-serif`;
-      c.fillText(`INV ${o.invoice.slice(0,24)}`,o.x+o.w/2,o.y+o.h/2+.25,Math.max(.2,o.w-.18));
-    }
-    if(o.status==='cleared'&&o.w>=2){c.fillStyle='#118c5d';c.font='800 .32px system-ui,sans-serif';c.fillText('✓',o.x+o.w-.32,o.y+.35);}
-    c.restore();
-  }
-  function drawLock(c,o){
-    c.fillStyle='#fff8ea';c.strokeStyle='#bf8534';c.lineWidth=.065;
-    c.beginPath();c.arc(o.x,o.y,.29,0,Math.PI*2);c.fill();c.stroke();
-    c.strokeStyle='#ac741f';c.lineWidth=.068;
-    roundRect(c,o.x-.12,o.y-.03,.24,.16,.035);c.stroke();
-    c.beginPath();c.arc(o.x,o.y-.045,.08,Math.PI,0);c.stroke();
-    if(o.label||o.keyRef){
-      c.font='750 .27px system-ui,sans-serif';c.fillStyle='#806334';c.textAlign='center';c.textBaseline='top';
-      c.fillText((o.label||o.keyRef).slice(0,30),o.x,o.y+.39,3.5);
-    }
-  }
-  function labelDimensions(c,o){
-    const size=o.fontSize??.44;
-    const text=(o.text||'Area').slice(0,80);
-    c.font=`750 ${size}px system-ui,sans-serif`;
-    const width=Math.min(20,Math.max(1.1,c.measureText(text).width+size*.8));
-    return {size,text,width,height:Math.max(.7,size*1.7)};
-  }
-  function drawLabel(c,o){
-    const d=labelDimensions(c,o);
-    c.textAlign='center';c.textBaseline='middle';
-    c.fillStyle='#eff5fbaa';c.strokeStyle='#9baec0';c.lineWidth=.042;
-    roundRect(c,o.x-d.width/2,o.y-d.height/2,d.width,d.height,.15);c.fill();c.stroke();
-    c.fillStyle=COLORS.label;c.fillText(d.text,o.x,o.y,d.width-.2);
-  }
+  function fontFor(o, defaultSize) {
+ return (o.fontSize ?? defaultSize) * (project.textScale ?? 1);
+}
+  function baseFont(o) {
+ if(o.type==='lot')return Math.min(.56,Math.max(.26,o.w/5));
+ if(o.type==='label')return .44;
+ if(o.type==='lock')return .27;
+ return .28;
+}
+  function drawStructure(c,o,showText=true) {
+ if(o.type==='wall'){
+   c.strokeStyle=COLORS.wall;c.lineWidth=.17;c.lineCap='square';line(c,o.x1,o.y1,o.x2,o.y2);
+ }
+ if(o.type==='door'){
+   c.lineCap='butt';c.strokeStyle='#fafcfe';c.lineWidth=.28;line(c,o.x1,o.y1,o.x2,o.y2);
+   c.strokeStyle=COLORS.door;c.lineWidth=.065;line(c,o.x1,o.y1,o.x2,o.y2);
+   const a=Math.atan2(o.y2-o.y1,o.x2-o.x1),d=Math.hypot(o.x2-o.x1,o.y2-o.y1);
+   if(d>0){
+     c.strokeStyle=COLORS.door;c.lineWidth=.045;c.setLineDash([.09,.09]);
+     c.beginPath();c.arc(o.x1,o.y1,Math.min(1.8,d),a,a+.85);c.stroke();c.setLineDash([]);
+     c.fillStyle=COLORS.door;c.beginPath();c.arc(o.x1,o.y1,.11,0,Math.PI*2);c.fill();
+   }
+ }
+ if(o.type==='shutter'){
+   c.strokeStyle='#fafcfe';c.lineWidth=.35;line(c,o.x1,o.y1,o.x2,o.y2);
+   c.strokeStyle=COLORS.shutter;c.lineCap='butt';c.lineWidth=.14;line(c,o.x1,o.y1,o.x2,o.y2);
+   const len=Math.hypot(o.x2-o.x1,o.y2-o.y1);
+   if(len>.1){
+     const dx=(o.x2-o.x1)/len,dy=(o.y2-o.y1)/len;
+     c.strokeStyle='#a06a27';c.lineWidth=.06;
+     for(let i=.28;i<len;i+=.37){let x=o.x1+dx*i,y=o.y1+dy*i;line(c,x-dy*.15,y+dx*.15,x+dy*.15,y-dx*.15);}
+   }
+ }
+ if(showText && o.label?.trim()){
+   const midX=(o.x1+o.x2)/2,midY=(o.y1+o.y2)/2;
+   const size=fontFor(o,baseFont(o));
+   c.font=`750 ${size}px system-ui,sans-serif`;c.textAlign='center';c.textBaseline='bottom';
+   c.fillStyle=o.type==='shutter'?'#916322':o.type==='wall'?'#405b76':'#2875ac';
+   c.fillText(o.label.slice(0,40),midX,midY-.17,Math.max(1.2,Math.hypot(o.x2-o.x1,o.y2-o.y1)+1));
+ }
+}
+  function drawLot(c,o,showText=true) {
+ if(o.w<=0||o.h<=0)return;
+ const color=o.color||STATUS[o.status]?.color||STATUS.pending.color;
+ c.fillStyle=color;c.globalAlpha=.2;roundRect(c,o.x+.06,o.y+.06,o.w-.12,o.h-.12,.17);c.fill();c.globalAlpha=1;
+ c.lineWidth=.085;c.strokeStyle=color;roundRect(c,o.x+.045,o.y+.045,o.w-.09,o.h-.09,.13);c.stroke();
+ if(o.status==='cleared'){
+   c.fillStyle=color;roundRect(c,o.x+.05,o.y+.05,Math.min(.22,o.w/4),o.h-.1,.06);c.fill();
+ }
+ if(!showText)return;
+ const f=fontFor(o,baseFont(o));
+ c.textAlign='center';c.textBaseline='middle';c.fillStyle='#263a52';c.font=`800 ${f}px system-ui,sans-serif`;
+ const main=o.number?`LOT ${o.number}`:'LOT';
+ const label=main.length>18?main.slice(0,17)+'…':main;
+ c.save();c.beginPath();c.rect(o.x+.08,o.y+.1,Math.max(0,o.w-.16),Math.max(0,o.h-.2));c.clip();
+ c.fillText(label,o.x+o.w/2,o.y+o.h/2-(o.invoice?.length? .17:0),Math.max(.2,o.w-.2));
+ if(o.invoice){
+   c.fillStyle='#61768d';c.font=`600 ${Math.min(.45,f*.65)}px system-ui,sans-serif`;
+   c.fillText(`INV ${o.invoice.slice(0,24)}`,o.x+o.w/2,o.y+o.h/2+.25,Math.max(.2,o.w-.18));
+ }
+ if(o.status==='cleared'&&o.w>=2){c.fillStyle='#118c5d';c.font='800 .32px system-ui,sans-serif';c.fillText('✓',o.x+o.w-.32,o.y+.35);}
+ c.restore();
+}
+  function drawLock(c,o,showText=true) {
+ c.fillStyle='#fff8ea';c.strokeStyle='#bf8534';c.lineWidth=.065;
+ c.beginPath();c.arc(o.x,o.y,.29,0,Math.PI*2);c.fill();c.stroke();
+ c.strokeStyle='#ac741f';c.lineWidth=.068;
+ roundRect(c,o.x-.12,o.y-.03,.24,.16,.035);c.stroke();
+ c.beginPath();c.arc(o.x,o.y-.045,.08,Math.PI,0);c.stroke();
+ if(showText&&(o.label||o.keyRef)){
+   c.font=`750 ${fontFor(o,.27)}px system-ui,sans-serif`;
+   c.fillStyle='#806334';c.textAlign='center';c.textBaseline='top';
+   c.fillText((o.label||o.keyRef).slice(0,30),o.x,o.y+.39,4.5);
+ }
+}
+  function labelDimensions(c,o) {
+ const size=fontFor(o,.44);
+ const text=(o.text||'Area').slice(0,80);
+ c.save();
+ c.font=`750 ${size}px system-ui,sans-serif`;
+ const width=Math.min(30,Math.max(1.1,c.measureText(text).width+size*.8));
+ c.restore();
+ return {size,text,width,height:Math.max(.7,size*1.7)};
+}
+  function drawLabel(c,o) {
+ const d=labelDimensions(c,o);
+ c.font=`750 ${d.size}px system-ui,sans-serif`;
+ c.textAlign='center';c.textBaseline='middle';
+ c.fillStyle='#eff5fbaa';c.strokeStyle='#9baec0';c.lineWidth=.042;
+ roundRect(c,o.x-d.width/2,o.y-d.height/2,d.width,d.height,.15);c.fill();c.stroke();
+ c.fillStyle=COLORS.label;c.fillText(d.text,o.x,o.y,d.width-.2);
+}
   function drawSelection(c,o){
     c.save();c.strokeStyle='#2479f0';c.lineWidth=2/scale();c.setLineDash([5/scale(),4/scale()]);
     if(o.type==='lot'){
@@ -472,13 +500,14 @@
       for(let y=0;y<=project.rows;y+=5){c.moveTo(0,y);c.lineTo(project.cols,y);}
       c.stroke();
     }
+    const showText=options.showText ?? (project.showText!==false);
     const arr=objectsInDrawOrder();
     for(const o of arr){
       c.save();
-      if(['wall','door','shutter'].includes(o.type))drawStructure(c,o);
-      else if(o.type==='lot')drawLot(c,o);
-      else if(o.type==='lock')drawLock(c,o);
-      else if(o.type==='label')drawLabel(c,o);
+      if(['wall','door','shutter'].includes(o.type))drawStructure(c,o,showText);
+      else if(o.type==='lot')drawLot(c,o,showText);
+      else if(o.type==='lock')drawLock(c,o,showText);
+      else if(o.type==='label'&&showText)drawLabel(c,o);
       c.restore();
     }
     if(!options.export){
@@ -705,6 +734,17 @@
     if(type==='select')return `<div class="field"><label for="fld-${e(name)}">${e(label)}</label><select id="fld-${e(name)}" data-field="${e(name)}" ${extra}>${val}</select></div>`;
     return `<div class="field"><label for="fld-${e(name)}">${e(label)}</label><input id="fld-${e(name)}" data-field="${e(name)}" type="${type}" value="${e(val)}" ${extra}></div>`;
   }
+  function fontControlHtml(o) {
+ const base=baseFont(o);
+ const custom=o.fontSize!==undefined;
+ return `<div class="font-tools-title">INDIVIDUAL MAP TEXT</div>
+   <div class="font-controls"><button class="btn btn-light" data-action="labelSmaller" title="Decrease this object's text size" aria-label="Smaller text for selected item">A−</button>
+   <span>${custom?'Custom size':'Automatic size'} · global ${Math.round((project.textScale??1)*100)}%</span>
+   <button class="btn btn-light" data-action="labelLarger" title="Increase this object's text size" aria-label="Larger text for selected item">A+</button></div>
+   ${field('This item’s font size (grid squares)','fontSize',custom?o.fontSize:base,'number','min="0.15" max="2.5" step="0.05"')}
+   <button class="font-reset" data-action="resetFont" ${custom?'':'disabled'}>Reset this item to automatic size</button>
+   <p class="field-help">Site-wide text size applies on top. These settings affect only the selected item.</p>`;
+}
   function fieldsXY(o,keys){
     return `<div class="field-grid">${keys.map(key=>field(key.toUpperCase()+' (grid)',key,o[key],'number','step="1"')).join('')}</div>`;
   }
@@ -718,6 +758,10 @@
         <div class="field-grid">${field('Grid width (squares)','cols',project.cols,'number','min="8" max="250"')}${field('Grid height (squares)','rows',project.rows,'number','min="8" max="250"')}</div>
         ${field('Metres per square','cellMeters',project.cellMeters,'number','min="0.1" max="100" step="0.1"')}
         <p class="field-help">Current site footprint: ${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m. Existing drawings remain at their grid coordinates if you change the scale.</p>
+        <div class="divider"></div><h3 class="panel-title">Map text</h3>
+        ${field('Size of all map text (%)','textScalePercent',Math.round((project.textScale??1)*100),'number','min="50" max="250" step="5"')}
+        <p class="field-help">Scales lot numbers, invoices, labels and access references together. Individual font adjustments remain independent.</p>
+        <div class="panel-actions"><button class="btn btn-light" data-action="toggleText">${project.showText===false?'Show all map text':'Hide all map text'}</button><button class="btn btn-light" data-action="printPreview">Print preview</button></div>
         <div class="divider"></div><h3 class="panel-title">Lot Colour Key</h3><div class="legend-grid">${Object.values(STATUS).map(s=>`<div class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${s.label}</div>`).join('')}</div>
         <div class="helper-card"><strong>How local saving works</strong><p>Every edit is saved automatically in this browser on this device. Export JSON to share your plan, transfer it to another device or keep a backup. Clearing browser data can erase local copies.</p></div>
         <div class="panel-actions"><button class="btn btn-light" data-action="png">Save plan as PNG</button><button class="btn btn-light" data-action="csv">Export lots CSV</button><button class="btn btn-light" data-action="duplicateSite">Duplicate site</button></div>
@@ -734,22 +778,19 @@
       html+=`<p class="field-help">Colour can be customised independently of clearance status. Green means cleared in the progress dashboard.</p>`;
       html+=`<div class="divider"></div><h3 class="panel-title">Footprint</h3>${fieldsXY(o,['x','y','w','h'])}`;
       html+=`<p class="field-help">Physical size: ${fmt(o.w*project.cellMeters)} × ${fmt(o.h*project.cellMeters)} metres.</p>`;
-      html+=field('Lot number font size (grid squares)','fontSize',o.fontSize??Math.min(.56,Math.max(.26,o.w/5)),'number','min="0.15" max="2.5" step="0.05"');
-      html+=`<p class="field-help">Change the size of the lot number on this plan. Default adapts to lot width.</p>`;
+      html+=fontControlHtml(o);
       html+=field('Notes / buyer / collection details','notes',o.notes,'textarea');
       html+=`<div class="panel-actions"><button class="btn btn-success" data-action="clearSelected">✓ ${o.status==='cleared'?'Reopen lot':'Green off lot'}</button><button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
     }else if(o.type==='lock'){
       html+=field('Lock label / reference','label',o.label)+field('Associated key ID','keyRef',o.keyRef,'text','placeholder="e.g. Key K-03"');
       html+=field('Key held by / location','keyHolder',o.keyHolder,'text','placeholder="e.g. Site manager / key safe"');
-      html+=fieldsXY(o,['x','y'])+field('Access notes','notes',o.notes,'textarea');
+      html+=fontControlHtml(o)+fieldsXY(o,['x','y'])+field('Access notes','notes',o.notes,'textarea');
     }else if(o.type==='label'){
       html+=field('Text to display','text',o.text);
-      html+=`<div class="font-controls"><button class="btn btn-light" data-action="labelSmaller" title="Smaller label text" aria-label="Make label text smaller">A−</button><span>Label font size</span><button class="btn btn-light" data-action="labelLarger" title="Larger label text" aria-label="Make label text larger">A+</button></div>`;
-      html+=field('Font size (grid squares)','fontSize',o.fontSize??.44,'number','min="0.15" max="2.5" step="0.05"');
-      html+=`<p class="field-help">A− / A+ resize the label on the plan. It is saved with this site.</p>`;
+      html+=fontControlHtml(o);
       html+=fieldsXY(o,['x','y'])+field('Notes','notes',o.notes,'textarea');
     }else{
-      html+=field('Name / reference','label',o.label)+fieldsXY(o,['x1','y1','x2','y2']);
+      html+=field('Name / reference','label',o.label)+fontControlHtml(o)+fieldsXY(o,['x1','y1','x2','y2']);
       html+=`<p class="field-help">Length: ${fmt(Math.hypot(o.x2-o.x1,o.y2-o.y1)*project.cellMeters)} metres. Draw or move on the grid to reposition.</p>`;
       html+=field('Notes','notes',o.notes,'textarea');
     }
@@ -799,6 +840,9 @@
       }else if(key==='cellMeters'){
         const num=Number(value);if(!Number.isFinite(num)||num<.1||num>100){toast('Scale must be between 0.1 and 100 metres per square.');renderPanel();return;}
         project.cellMeters=Math.round(num*100)/100;
+      }else if(key==='textScalePercent'){
+        const num=Number(value);if(!Number.isFinite(num)||num<50||num>250){toast('Text size must be 50–250%.');renderPanel();return;}
+        project.textScale=Math.round(num)/100;
       }
       commit(before);
       if(['cols','rows'].includes(key))fitView();
@@ -830,6 +874,8 @@
     const o=getSelected();
     if(action==='csv'){exportCSV();return;}
     if(action==='png'){exportPNG();return;}
+    if(action==='printPreview'){openPrintPreview();return;}
+    if(action==='toggleText'){setTextVisibility();return;}
     if(action==='duplicateSite'){duplicateSite();return;}
     if(action==='deleteSite'){await deleteSite();return;}
     if(action==='drawLot'){setTool('lot');return;}
@@ -843,10 +889,13 @@
       removeObject(o);return;
     }
     const before=snapshot();
-    if(o.type==='label' && ['labelSmaller','labelLarger'].includes(action)){
+    if(['labelSmaller','labelLarger'].includes(action)){
       const direction=action==='labelLarger'?1:-1;
-      o.fontSize=Math.round(minmax((o.fontSize??.44)+direction*.1,.15,2.5)*100)/100;
+      o.fontSize=Math.round(minmax((o.fontSize??baseFont(o))+direction*.1,.15,2.5)*100)/100;
       commit(before);return;
+    }
+    if(action==='resetFont'){
+      delete o.fontSize;commit(before);return;
     }
     if(action==='resetColor')o.color='';
     if(action==='clearSelected')o.status=o.status==='cleared'?'pending':'cleared';
@@ -861,6 +910,64 @@
     }
     commit(before);
   }
+  function setGlobalTextPercent(raw) {
+ const percent=Number(raw);
+ if(!Number.isFinite(percent)||percent<50||percent>250){
+   toast('Choose a text size between 50% and 250%.');
+   refreshStats();renderPanel();return;
+ }
+ const before=snapshot();
+ project.textScale=Math.round(percent)/100;
+ commit(before);
+}
+
+  function setTextVisibility() {
+ const before=snapshot();
+ project.showText=project.showText===false;
+ commit(before);
+ toast(project.showText===false?'Map text hidden (data preserved)':'Map text visible');
+}
+
+  function openPrintPreview() {
+ const dialog=$('printDialog');
+ $('printPaper').value='A4';
+ $('printOrientation').value=project.cols>=project.rows?'landscape':'portrait';
+ $('printText').checked=project.showText!==false;
+ $('printGrid').checked=true;
+ dialog.showModal();
+ renderPrintPreview();
+}
+
+  function renderPrintPreview() {
+ const paper=$('printPaper').value==='A3'?'A3':'A4';
+ const orientation=$('printOrientation').value==='portrait'?'portrait':'landscape';
+ const showText=$('printText').checked;
+ const grid=$('printGrid').checked;
+ const sizes=paper==='A3'?[297,420]:[210,297];
+ const mmW=orientation==='landscape'?sizes[1]:sizes[0],mmH=orientation==='landscape'?sizes[0]:sizes[1];
+ const mapW=Math.max(1,Math.round((mmW-24)*5));
+ const mapH=Math.max(1,Math.round((mmH-52)*5));
+ const render=document.createElement('canvas');render.width=mapW;render.height=mapH;
+ const c=render.getContext('2d');
+ const px=Math.min((mapW-10)/project.cols,(mapH-10)/project.rows);
+ const ox=(mapW-project.cols*px)/2,oy=(mapH-project.rows*px)/2;
+ paint(c,mapW,mapH,ox,oy,px,{export:true,grid,showText});
+ $('printMap').src=render.toDataURL('image/png');
+ $('printPage').style.aspectRatio=`${mmW} / ${mmH}`;
+ $('printSiteName').textContent=project.name;
+ $('printMeta').textContent=`${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m · ${paper} ${orientation}`;
+ $('printScale').textContent=`1 grid square = ${fmt(project.cellMeters)} m · diagram fitted to page (not a measured print scale)`;
+ const total=project.objects.filter(x=>x.type==='lot');
+ const done=total.filter(x=>x.status==='cleared').length;
+ $('printCounts').textContent=`Lots: ${total.length} · Cleared: ${done} · Pending: ${total.length-done}`;
+ $('printSheetSize').textContent=`${paper} ${orientation} · labels ${showText?'on':'off'} · grid ${grid?'on':'off'}`;
+ $('printPageRules').textContent=`@media print{@page{size:${paper} ${orientation};margin:0}}`;
+}
+
+  function printPlan() {
+ renderPrintPreview();
+ requestAnimationFrame(()=>window.print());
+}
   function wireUI(){
     for(const btn of document.querySelectorAll('button[data-tool]'))btn.addEventListener('click',()=>setTool(btn.dataset.tool));
     for(const btn of document.querySelectorAll('[data-tab]'))btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
@@ -871,6 +978,17 @@
     $('importFile').addEventListener('change',event=>{importJSON(event.target.files[0]);event.target.value='';});
     $('undoBtn').addEventListener('click',undo);$('redoBtn').addEventListener('click',redo);
     $('fitBtn').addEventListener('click',fitView);
+    $('textScaleInput').addEventListener('change',ev=>setGlobalTextPercent(ev.target.value));
+    $('textToggleBtn').addEventListener('click',setTextVisibility);
+    $('printPreviewBtn').addEventListener('click',openPrintPreview);
+    $('printCloseBtn').addEventListener('click',()=>$('printDialog').close());
+    for(const id of ['printPaper','printOrientation','printText','printGrid']){
+      $(id).addEventListener('change',renderPrintPreview);
+    }
+    $('printGoBtn').addEventListener('click',printPlan);
+    $('printDialog').addEventListener('click',ev=>{
+      if(ev.target===$('printDialog'))$('printDialog').close();
+    });
     $('zoomIn').addEventListener('click',()=>zoomAt(1.25,view.width/2,view.height/2));
     $('zoomOut').addEventListener('click',()=>zoomAt(.8,view.width/2,view.height/2));
     $('quickLotBtn').addEventListener('click',()=>setTool('lot'));
@@ -911,7 +1029,7 @@
     document.addEventListener('keydown',event=>{
       const target=event.target;
       if(target instanceof HTMLElement && (target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;
-      if($('confirmDialog').open)return;
+      if($('confirmDialog').open||$('printDialog').open)return;
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){
         event.preventDefault();if(event.shiftKey)redo();else undo();return;
       }

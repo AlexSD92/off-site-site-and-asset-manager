@@ -7,6 +7,7 @@
   <meta name="description" content="An offline auction site plan and lot clearance tracker. Draw sites, track access and invoice numbers, and export portable JSON files.">
   <title>YardMap — Auction Site Planner</title>
   <link rel="stylesheet" href="styles.css">
+<style id="printPageRules"></style>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -79,6 +80,10 @@
             <span id="zoomLabel" class="zoom-label">100%</span>
             <button class="mini-btn" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
             <button class="mini-btn fit-btn" id="fitBtn" title="Fit site to view">Fit</button>
+          <span class="toolbar-separator"></span>
+          <label class="text-scale-ctrl" for="textScaleInput">Text <input id="textScaleInput" type="number" min="50" max="250" step="5" value="100" aria-label="Size of all map text in percent"><span>%</span></label>
+          <button class="mini-btn map-text-toggle" id="textToggleBtn" type="button" aria-pressed="true" title="Show or hide all text on the plan">Aa · Show</button>
+          <button class="mini-btn print-open-btn" id="printPreviewBtn" type="button" title="Print preview and save as PDF">Print preview</button>
           </div>
         </div>
         <div class="canvas-wrap" id="canvasWrap">
@@ -98,6 +103,27 @@
     </div>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <dialog id="confirmDialog" class="confirm-dialog"><form method="dialog"><h3 id="confirmTitle">Confirm</h3><p id="confirmText"></p><div class="dialog-actions"><button class="btn btn-subtle" value="cancel">Cancel</button><button class="btn btn-danger" id="confirmAccept" value="confirm">Confirm</button></div></form></dialog>
+  <dialog id="printDialog" class="print-dialog" aria-label="Site plan print preview">
+  <div class="print-dialog-header">
+    <div><strong>Print preview</strong><small>Print the full site plan or choose Save as PDF.</small></div>
+    <button id="printCloseBtn" class="print-close" type="button" aria-label="Close print preview">✕</button>
+  </div>
+  <div class="print-controls">
+    <label>Paper <select id="printPaper"><option value="A4">A4</option><option value="A3">A3</option></select></label>
+    <label>Layout <select id="printOrientation"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label>
+    <label class="print-check"><input id="printText" type="checkbox" checked> Show text</label>
+    <label class="print-check"><input id="printGrid" type="checkbox" checked> Show grid</label>
+    <button id="printGoBtn" class="btn btn-primary" type="button">Print / Save PDF</button>
+  </div>
+  <div class="print-stage">
+    <section id="printPage" class="print-page" aria-label="Printable site plan">
+      <header class="print-page-header"><div><strong id="printSiteName"></strong><small id="printMeta"></small></div><b>YARDMAP · SITE PLAN</b></header>
+      <div class="print-map-area"><img id="printMap" alt="Site plan for printing"></div>
+      <footer class="print-page-footer"><span id="printScale"></span><span id="printCounts"></span></footer>
+    </section>
+  </div>
+  <div class="print-dialog-footer"><span id="printSheetSize"></span><span>Preview options do not change the saved site.</span></div>
+</dialog>
+<dialog id="confirmDialog" class="confirm-dialog"><form method="dialog"><h3 id="confirmTitle">Confirm</h3><p id="confirmText"></p><div class="dialog-actions"><button class="btn btn-subtle" value="cancel">Cancel</button><button class="btn btn-danger" id="confirmAccept" value="confirm">Confirm</button></div></form></dialog>
 </body>
 </html>
