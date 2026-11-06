@@ -173,3 +173,19 @@
 .admin-unmatched{color:#916a3a;background:#fff6e9;border-left:3px solid #c89243;padding:9px 10px;border-radius:4px;font-size:11px;line-height:1.55}
 .panel-tabs{flex-wrap:wrap}
 @media(max-width:480px){.admin-detail-grid{grid-template-columns:1fr}.admin-file-actions .btn{flex:1 1 100%}}
+
+/* Imported admin fields are a live local view, not copied into plan JSON. */
+.invoice-link-state{display:flex;flex-direction:column;gap:8px;margin:-4px 0 12px;padding:10px 11px;border-left:3px solid #b6c8db;background:#f4f8fc;border-radius:0 8px 8px 0}
+.invoice-link-state span{font-size:11px;line-height:1.5;color:#566c83}
+.invoice-link-state.linked{border-color:#38a477;background:#eefaf4}
+.invoice-link-state.linked span{color:#257452}
+.invoice-link-state.conflict{border-color:#d08a45;background:#fff7ed}
+.invoice-link-state.conflict span{color:#8e5b2e}
+.invoice-link-state button{align-self:flex-start;max-width:100%;white-space:normal;text-align:left;overflow-wrap:anywhere;font-size:11px}
+.linked-contact-fields{margin:12px 0 16px;padding:13px 12px;border:1px solid #dce7f4;border-radius:10px;background:#f8fbff}
+.linked-contact-heading{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.linked-contact-heading strong{font-size:12px;color:#254a73}
+.linked-contact-heading span{font-size:10px;color:#697e94}
+.linked-contact-fields .field{margin-bottom:9px}
+.linked-contact-fields input[readonly]{background:#eaf2fa;border-color:#d6e3f0;color:#344b61;cursor:text}
+.linked-contact-fields .field-help{margin:4px 0 0}

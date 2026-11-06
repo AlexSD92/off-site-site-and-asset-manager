@@ -97,11 +97,28 @@
       return false;
     }
   }
+  // Keep confidential daily-report data separate from structural JSON.
+  // Derived fields resolve live and never modify project objects automatically.
+  let cachedReport=null;
+  let cachedReportIndex=null;
   function reportForLot(lot){
     const report=adminReport();
     if(!report||lot?.type!=='lot')return null;
-    const index=ADMIN().indexReport(report);
-    return {report,index,row:index.byLot.get(ADMIN().lotKey(lot.number))||null};
+    if(cachedReport!==report){
+      cachedReport=report;cachedReportIndex=ADMIN().indexReport(report);
+    }
+    const key=ADMIN().lotKey(lot.number);
+    const duplicateOnMap=project.objects.some(o=>o.type==='lot'&&o.id!==lot.id&&ADMIN().lotKey(o.number)===key);
+    const duplicateInReport=cachedReportIndex.duplicates.has(key);
+    return {report,index:cachedReportIndex,duplicateOnMap,duplicateInReport,
+      row:!duplicateOnMap&&!duplicateInReport?(cachedReportIndex.byLot.get(key)||null):null};
+  }
+  function importedInvoiceFor(lot){
+    const row=reportForLot(lot)?.row;
+    return row?ADMIN().invoiceKey(row['dbo.RWX_Invoices::Id']):'';
+  }
+  function effectiveInvoiceFor(lot){
+    return String(lot?.invoice??'').trim()||importedInvoiceFor(lot);
   }
 
   const createProject = (name='Untitled auction site') => ({
@@ -355,7 +372,7 @@
   function exportCSV(){
     const rows=[['Lot number','Invoice number','Status','Colour','X (m)','Y (m)','Width (m)','Depth (m)','Notes']];
     for(const l of project.objects.filter(o=>o.type==='lot'))rows.push([
-      l.number,l.invoice,STATUS[l.status]?.label||l.status,l.color||STATUS[l.status].color,
+      l.number,effectiveInvoiceFor(l),STATUS[l.status]?.label||l.status,l.color||STATUS[l.status].color,
       fmt(l.x*project.cellMeters),fmt(l.y*project.cellMeters),fmt(l.w*project.cellMeters),fmt(l.h*project.cellMeters),l.notes||''
     ]);
     const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -553,11 +570,12 @@
  c.textAlign='center';c.textBaseline='middle';c.fillStyle='#263a52';c.font=`800 ${f}px system-ui,sans-serif`;
  const main=o.number?`LOT ${o.number}`:'LOT';
  const label=main.length>18?main.slice(0,17)+'…':main;
+ const effectiveInvoice=effectiveInvoiceFor(o);
  c.save();c.beginPath();c.rect(o.x+.08,o.y+.1,Math.max(0,o.w-.16),Math.max(0,o.h-.2));c.clip();
- c.fillText(label,o.x+o.w/2,o.y+o.h/2-(o.invoice?.length? .17:0),Math.max(.2,o.w-.2));
- if(o.invoice){
+ c.fillText(label,o.x+o.w/2,o.y+o.h/2-(effectiveInvoice.length? .17:0),Math.max(.2,o.w-.2));
+ if(effectiveInvoice){
    c.fillStyle='#61768d';c.font=`600 ${Math.min(.45,f*.65)}px system-ui,sans-serif`;
-   c.fillText(`INV ${o.invoice.slice(0,24)}`,o.x+o.w/2,o.y+o.h/2+.25,Math.max(.2,o.w-.18));
+   c.fillText(`INV ${effectiveInvoice.slice(0,24)}`,o.x+o.w/2,o.y+o.h/2+.25,Math.max(.2,o.w-.18));
  }
  if(o.status==='cleared'&&o.w>=2){c.fillStyle='#118c5d';c.font='800 .32px system-ui,sans-serif';c.fillText('✓',o.x+o.w-.32,o.y+.35);}
  c.restore();
@@ -956,6 +974,41 @@
     const text=ADMIN().asText(v);
     return text?e(text):'<span class="missing">Not supplied</span>';
   }
+  function invoiceEditorHtml(lot){
+    const found=reportForLot(lot);
+    const imported=importedInvoiceFor(lot);
+    const manual=String(lot.invoice||'').trim();
+    let note;
+    if(found?.duplicateOnMap)note='Duplicate lot number on the drawing: automatic invoice matching has been disabled.';
+    else if(found?.duplicateInReport)note='Duplicate LotNumber in today’s spreadsheet: automatic invoice matching has been disabled.';
+    else if(imported&&manual&&manual!==imported)note='Manual invoice differs from the daily spreadsheet. The existing manual value is preserved.';
+    else if(imported&&manual)note='Existing manual invoice matches today’s report. Switch to automatic linking to follow future reports.';
+    else if(imported)note='Auto-filled from the daily spreadsheet; this value is not written into structural site JSON.';
+    else if(found?.row)note='Lot matched, but today’s spreadsheet has no invoice ID.';
+    else if(found)note='No exact lot match in the daily report. Any manual invoice is preserved.';
+    else note='Manual entry. Import an Excel report under Admin Data to auto-fill this field.';
+    return field('Invoice number(s)','invoice',effectiveInvoiceFor(lot),'text','placeholder="Auto-filled from Excel or type manually"')+
+      `<div class="invoice-link-state ${found?.duplicateOnMap||found?.duplicateInReport||imported&&manual&&manual!==imported?'conflict':imported&&!manual?'linked':''}">
+        <span>${e(note)}</span>
+        ${imported&&manual?`<button type="button" class="btn btn-light" data-action="followAdminInvoice">Use daily invoice (${e(imported)})</button>`:''}
+      </div>`;
+  }
+  function linkedContactFields(lot){
+    const row=reportForLot(lot)?.row;
+    if(!row)return '';
+    const values=[
+      ['Buyer / billing name','dbo.RWX_Invoices::Full Billing Name'],
+      ['Mobile','mobile::StringNativeValue'],
+      ['Telephone','tel::StringNativeValue'],
+      ['Billing postcode','dbo.RWX_Invoices::BillingZipPostal'],
+      ['Username','dbo.RWX_Users 2::UserName']
+    ];
+    return `<div class="linked-contact-fields">
+      <div class="linked-contact-heading"><strong>Buyer & contact details</strong><span>Daily spreadsheet · read only</span></div>
+      ${values.map(([label,key])=>field(label,'linked_'+key,ADMIN().asText(row[key]),'text','readonly autocomplete="off"')).join('')}
+      <p class="field-help">Shown from the local admin report; never copied to site-plan JSON. Import a newer report to refresh.</p>
+    </div>`;
+  }
   function adminInfoCard(lot){
     if(!localAdminAllowed())return '';
     const found=reportForLot(lot);
@@ -964,7 +1017,10 @@
     }
     const {row,index}=found;
     if(!row){
-      return `<div class="admin-lot-card"><h3>Admin invoice report</h3><p class="admin-unmatched">No exact LotNumber match found for lot ${e(lot.number)} in the imported report. Check the auction and lot numbers before using the details.</p></div>`;
+      const why=found.duplicateOnMap?'Multiple drawn lots share the same lot number. Correct the duplicate before linking customer details.':
+        found.duplicateInReport?'The spreadsheet has duplicate rows for this LotNumber. Auto-linking is disabled to avoid displaying the wrong customer.':
+        `No exact LotNumber match found for lot ${lot.number}. Check the auction and lot number before using the details.`;
+      return `<div class="admin-lot-card"><h3>Admin invoice report</h3><p class="admin-unmatched">${e(why)}</p></div>`;
     }
     const inv=ADMIN().invoiceKey(row['dbo.RWX_Invoices::Id']);
     const siblings=inv?index.byInvoice.get(inv)||[]:[];
@@ -995,7 +1051,7 @@
       </dl>
       <h3 class="admin-group-title">Lots on this invoice ${inv?'('+siblings.length+')':''}</h3>
       ${inv?`<div class="admin-sibling-list">${linked}</div>`:'<p class="admin-unmatched">No invoice ID in the Excel row; other lots cannot be grouped reliably.</p>'}
-      <p class="field-help">These values come only from the locally imported admin report. They do not overwrite manually recorded lot details or clearance status.</p>
+      <p class="field-help">These values are read from the locally imported daily report. Manual notes and clearance status remain unchanged; invoice values auto-link only when no manual override is present.</p>
     </section>`;
   }
   function renderAdminPanel(){
@@ -1028,7 +1084,7 @@
           ${summary.duplicateLotKeys.length?`<p class="admin-unmatched">Warning: ${summary.duplicateLotKeys.length} duplicate LotNumber values in the report. They are not matched automatically.</p>`:''}
         </div>`:'<div class="helper-card"><strong>No report imported yet</strong><p>The layout and existing lot records are unaffected until you import a local admin report. A new daily report replaces the previous one for this site only.</p></div>'}
       <div class="admin-file-actions"><button type="button" class="btn btn-light" data-action="adminRemove" ${report?'':'disabled'}>Remove local admin report</button></div>
-      <div class="helper-card"><strong>Data separation</strong><p><b>Export Site JSON</b> contains the drawing. <b>Download admin JSON</b> contains the spreadsheet data, including contact information. Treat admin JSON as confidential. Replacing the daily report never changes your drawings.</p></div>`;
+      <div class="helper-card"><strong>Automatic field linking</strong><p>Matched lots display current invoice IDs and contact details in the original Details panel. Manual invoices are never silently overwritten; conflicts are flagged and can be switched to the daily report. Imported customer data stays out of structural site JSON unless you deliberately type a manual override. Exported CSV, PNG and PDF may display imported invoice IDs and must be handled as confidential. Replacing the daily report never changes your drawing.</p></div>`;
   }
   async function importAdminFile(file,format){
     if(!file)return;
@@ -1112,7 +1168,7 @@
     const title={lot:`Lot ${o.number||'—'}`,box:`Area: ${o.label||'Untitled'}`,wall:'Wall',door:'Doorway',shutter:'Roller Shutter',lock:'Lock & Key',label:'Text Label'}[o.type];
     let html=`<h2 class="panel-title">${e(title)} <span style="font-size:10px;font-weight:600;color:#a2b0c0">· EDIT</span></h2><p class="panel-description">Changes save automatically when you finish editing a field.</p>`;
     if(o.type==='lot'){
-      html+=field('Lot number','number',o.number)+field('Invoice number(s)','invoice',o.invoice,'text','placeholder="e.g. INV-1042"');
+      html+=field('Lot number','number',o.number)+invoiceEditorHtml(o)+linkedContactFields(o);
       html+=field('Clearance status','status',optionsHtml(Object.entries(STATUS).map(([k,v])=>[k,v.label]),o.status),'select');
       html+=`<div class="field-grid">${field('Custom colour','color',o.color||STATUS[o.status].color,'color')}
         <div class="field"><label>Use status colour</label><button class="btn btn-light" data-action="resetColor" style="width:100%;min-height:40px">Reset colour</button></div></div>`;
@@ -1155,7 +1211,7 @@
     panel.innerHTML=html;
   }
   function renderLotsPanel(){
-    panel.innerHTML=`<h2 class="panel-title">Lot Register</h2><p class="panel-description">Select a lot to edit its invoice, location or collection status. Use ✓ to green it off immediately.</p>
+    panel.innerHTML=`<h2 class="panel-title">Lot Register</h2><p class="panel-description">Select a lot to edit its invoice, location or collection status. Linked invoice IDs come from the most recently imported daily spreadsheet, while manually entered values take priority. The exported CSV may contain confidential imported invoice IDs.</p>
       <div class="lot-tools"><input id="lotSearch" class="search-input" type="search" placeholder="Search lot, invoice or notes…" value="${e(settings.lotSearch)}" aria-label="Search lots"><div class="filter-row" id="lotFilters">${[['all','All'],['pending','Pending'],['cleared','Cleared'],['hold','Hold'],['issue','Issues'],['reserved','Reserved']].map(([k,v])=>`<button class="filter-chip ${settings.lotFilter===k?'active':''}" data-filter="${k}">${v}</button>`).join('')}</div></div>
       <div id="lotList"></div>
       <div class="divider"></div><div class="panel-actions"><button class="btn btn-light" data-action="csv">Export lot register CSV</button><button class="btn btn-primary" data-action="drawLot">+ Draw lot</button></div>`;
@@ -1165,12 +1221,13 @@
     const target=$('lotList');if(!target)return;
     const query=settings.lotSearch.toLowerCase().trim();
     const lots=project.objects.filter(o=>o.type==='lot'&&(settings.lotFilter==='all'||o.status===settings.lotFilter))
-      .filter(o=>[o.number,o.invoice,o.notes,o.status].join(' ').toLowerCase().includes(query));
+      .filter(o=>[o.number,effectiveInvoiceFor(o),o.notes,o.status].join(' ').toLowerCase().includes(query));
     if(!lots.length){target.innerHTML='<div class="empty-list">No matching lots yet. Choose <b>Draw Lot</b> to place one on the site plan.</div>';return;}
     target.innerHTML=lots.map(o=>{
       const cleared=o.status==='cleared';const c=o.color||STATUS[o.status].color;
+      const shownInvoice=effectiveInvoiceFor(o);
       return `<div class="list-item-card ${settings.selected===o.id?'selected':''}" data-select="${e(o.id)}" tabindex="0" role="button" aria-label="Edit lot ${e(o.number)}">
-      <div class="list-card-top"><span class="lot-swatch" style="background:${c}"></span><div class="lot-card-main"><strong>Lot ${e(o.number||'—')}</strong><small>${o.invoice?`Invoice: ${e(o.invoice)}`:'No invoice linked'} · ${e(STATUS[o.status].label)}</small></div>
+      <div class="list-card-top"><span class="lot-swatch" style="background:${c}"></span><div class="lot-card-main"><strong>Lot ${e(o.number||'—')}</strong><small>${shownInvoice?`Invoice: ${e(shownInvoice)}`:'No invoice linked'} · ${e(STATUS[o.status].label)}</small></div>
       <div class="lot-card-actions"><button class="quick-clear ${cleared?'is-cleared':''}" data-clear="${e(o.id)}" title="${cleared?'Mark pending':'Mark cleared'}" aria-label="${cleared?'Reopen':'Clear'} lot ${e(o.number)}">${cleared?'↶':'✓'}</button></div></div></div>`;
     }).join('');
   }
@@ -1218,6 +1275,13 @@
       else if(key==='x')value=minmax(value,0,project.cols);
       else if(key==='y')value=minmax(value,0,project.rows);
     }
+    if(key.startsWith('linked_'))return;
+    if(key==='invoice'&&obj.type==='lot'){
+      value=String(value).trim().slice(0,200);
+      // Even if the imported invoice is visible in the input, do not copy
+      // it to structural JSON when the user has not actually overridden it.
+      if(value===importedInvoiceFor(obj))value='';
+    }
     if(key==='fontSize'){
       const parsed=Number(value);
       if(!Number.isFinite(parsed)||parsed<.15||parsed>2.5){toast('Font size must be 0.15 to 2.5 grid squares.');renderPanel();return;}
@@ -1244,6 +1308,12 @@
     if(action==='adminJsonImport'){$('adminJsonFile').click();return;}
     if(action==='adminJsonExport'){exportAdminJson();return;}
     if(action==='adminRemove'){removeAdminData();return;}
+    if(action==='followAdminInvoice'){
+      if(o?.type!=='lot'||!importedInvoiceFor(o))return;
+      const before=snapshot();o.invoice='';commit(before);
+      toast('Invoice now updates automatically from the daily spreadsheet.');
+      return;
+    }
     if(action==='csv'){exportCSV();return;}
     if(action==='png'){exportPNG();return;}
     if(action==='printPreview'){openPrintPreview();return;}
