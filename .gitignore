@@ -9,3 +9,13 @@ node_modules/
 *.local.json
 exports/
 backups/
+
+# Never include auction exports or personally identifiable information in Git.
+*.xlsx
+*.xls
+*.xlsm
+*.ods
+*.csv
+*.yardmap.json
+*-admin-confidential.json
+*.report.json

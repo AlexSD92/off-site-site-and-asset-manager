@@ -4,6 +4,7 @@
   'use strict';
 
   const STORE_KEY = 'yardmap.projects.v1';
+  const ADMIN_STORE_KEY = 'yardmap.adminReports.v1';
   const EXPORT_SIGNATURE = 'yardmap-site';
   const CELL_PX = 30;
   const MAX_UNDO = 80;
@@ -55,6 +56,53 @@
   let state = { activeId:null, projects:[] };
   let project;
   let recoveryBlocked=false;
+  let adminReports=Object.create(null);
+  let adminReportsBlocked=false;
+  const ADMIN=()=>window.YardMapReport;
+  const localAdminAllowed=()=>{
+    const u=window.location;
+    if(u.protocol==='file:')return true;
+    return ['localhost','127.0.0.1','[::1]'].includes(u.hostname);
+  };
+  function adminReport(){
+    return localAdminAllowed()?adminReports[project.id]||null:null;
+  }
+  function loadAdminReports(){
+    if(!localAdminAllowed())return;
+    let text=null;
+    try{
+      text=localStorage.getItem(ADMIN_STORE_KEY);
+      if(!text)return;
+      const found=JSON.parse(text);
+      if(!found||typeof found!=='object'||Array.isArray(found))throw Error('Invalid saved admin report map.');
+      const clean=Object.create(null);
+      for(const [id,item] of Object.entries(found).slice(0,100)){
+        clean[id]=ADMIN().validateReport(item);
+      }
+      adminReports=clean;
+    }catch(err){
+      console.error('Could not load local admin data. Existing data will not be overwritten.',err);
+      adminReportsBlocked=text!==null;
+    }
+  }
+  function storeAdminReports(next){
+    if(!localAdminAllowed()||adminReportsBlocked)return false;
+    try{
+      localStorage.setItem(ADMIN_STORE_KEY,JSON.stringify(next));
+      adminReports=next;
+      return true;
+    }catch(err){
+      console.error('Could not save local admin report.',err);
+      toast('Import not saved: browser storage is unavailable. The old report is intact.');
+      return false;
+    }
+  }
+  function reportForLot(lot){
+    const report=adminReport();
+    if(!report||lot?.type!=='lot')return null;
+    const index=ADMIN().indexReport(report);
+    return {report,index,row:index.byLot.get(ADMIN().lotKey(lot.number))||null};
+  }
 
   const createProject = (name='Untitled auction site') => ({
     id:nextId(), name, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
@@ -903,9 +951,127 @@
   function fieldsXY(o,keys){
     return `<div class="field-grid">${keys.map(key=>field(key.toUpperCase()+' (grid)',key,o[key],'number','step="1"')).join('')}</div>`;
   }
+
+  function fmtAdminValue(v){
+    const text=ADMIN().asText(v);
+    return text?e(text):'<span class="missing">Not supplied</span>';
+  }
+  function adminInfoCard(lot){
+    if(!localAdminAllowed())return '';
+    const found=reportForLot(lot);
+    if(!found){
+      return '<div class="admin-lot-card"><h3>Admin invoice report</h3><p class="field-help">No admin report linked to this site. Use the Admin Data tab to import the daily Excel report locally.</p></div>';
+    }
+    const {row,index}=found;
+    if(!row){
+      return `<div class="admin-lot-card"><h3>Admin invoice report</h3><p class="admin-unmatched">No exact LotNumber match found for lot ${e(lot.number)} in the imported report. Check the auction and lot numbers before using the details.</p></div>`;
+    }
+    const inv=ADMIN().invoiceKey(row['dbo.RWX_Invoices::Id']);
+    const siblings=inv?index.byInvoice.get(inv)||[]:[];
+    const formattedPrice=row['dbo.RWX_Listings::CurrentPrice']===''?'Not supplied':
+      new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(Number(row['dbo.RWX_Listings::CurrentPrice'])||0);
+    const linked=siblings.map(other=>{
+      const key=ADMIN().lotKey(other.LotNumber);
+      const match=project.objects.find(o=>o.type==='lot'&&ADMIN().lotKey(o.number)===key);
+      return match
+        ? `<button type="button" class="admin-sibling" data-select="${e(match.id)}"><b>Lot ${e(other.LotNumber)}</b><span>${e(String(other['dbo.RWX_Listings::Title']||'').slice(0,65))}</span></button>`
+        : `<div class="admin-sibling not-drawn"><b>Lot ${e(other.LotNumber)}</b><span>Not placed on site plan</span></div>`;
+    }).join('');
+    const paid=ADMIN().formatPaid(row['dbo.RWX_Invoices::PaidDTTM']);
+    return `<section class="admin-lot-card">
+      <div class="admin-lot-head"><h3>Admin invoice report</h3><span>Matched lot</span></div>
+      <dl class="admin-detail-grid">
+        <div><dt>Invoice ID</dt><dd>${fmtAdminValue(row['dbo.RWX_Invoices::Id'])}</dd></div>
+        <div><dt>Lot status</dt><dd>${fmtAdminValue(row['dbo.RWX_LineItems::Lot Status'])}</dd></div>
+        <div class="admin-full"><dt>Lot description</dt><dd>${fmtAdminValue(row['dbo.RWX_Listings::Title'])}</dd></div>
+        <div><dt>Winning price</dt><dd>${e(formattedPrice)}</dd></div>
+        <div><dt>Payment recorded</dt><dd>${paid?e(paid):'<span class="missing">Not supplied</span>'}</dd></div>
+        <div class="admin-full"><dt>Billing name</dt><dd>${fmtAdminValue(row['dbo.RWX_Invoices::Full Billing Name'])}</dd></div>
+        <div><dt>Billing postcode</dt><dd>${fmtAdminValue(row['dbo.RWX_Invoices::BillingZipPostal'])}</dd></div>
+        <div><dt>Username</dt><dd>${fmtAdminValue(row['dbo.RWX_Users 2::UserName'])}</dd></div>
+        <div><dt>Mobile</dt><dd>${fmtAdminValue(row['mobile::StringNativeValue'])}</dd></div>
+        <div><dt>Telephone</dt><dd>${fmtAdminValue(row['tel::StringNativeValue'])}</dd></div>
+        <div><dt>Payer ID</dt><dd>${fmtAdminValue(row['dbo.RWX_Invoices::PayerId'])}</dd></div>
+      </dl>
+      <h3 class="admin-group-title">Lots on this invoice ${inv?'('+siblings.length+')':''}</h3>
+      ${inv?`<div class="admin-sibling-list">${linked}</div>`:'<p class="admin-unmatched">No invoice ID in the Excel row; other lots cannot be grouped reliably.</p>'}
+      <p class="field-help">These values come only from the locally imported admin report. They do not overwrite manually recorded lot details or clearance status.</p>
+    </section>`;
+  }
+  function renderAdminPanel(){
+    if(!localAdminAllowed()){
+      panel.innerHTML=`<h2 class="panel-title">Admin Data · Offline only</h2>
+        <div class="helper-card"><strong>Import disabled on hosted websites</strong>
+        <p>For customer privacy, Excel/JSON report imports work only from a local file or http://localhost. GitHub Pages is public and must not be used for customer information.</p></div>`;
+      return;
+    }
+    const report=adminReport(),summary=report?ADMIN().countMatch(report,project.objects):null;
+    panel.innerHTML=`<h2 class="panel-title">Admin Data</h2>
+      <p class="panel-description">Import the daily Excel export. YardMap joins it to the drawing by exact <b>LotNumber</b>, separately from the site-plan JSON.</p>
+      <div class="admin-offline-note"><strong>Local only</strong><span>No uploads, accounts, external connections or cloud sync. Data remains in this browser on this device.</span></div>
+      <div class="admin-file-actions">
+        <button type="button" class="btn btn-primary" data-action="adminExcel">Import daily Excel (.xlsx)</button>
+        <button type="button" class="btn btn-light" data-action="adminJsonImport">Import admin JSON</button>
+        <button type="button" class="btn btn-light" data-action="adminJsonExport" ${report?'':'disabled'}>Download admin JSON</button>
+      </div>
+      ${report?`<div class="admin-report-card">
+          <strong>Report linked to this site</strong>
+          <p>Source: ${e(report.sourceName||'Admin report')}<br>
+          AuctionEventID: ${e(report.auctionEventId||'Not supplied')}<br>
+          Imported: ${e(new Date(report.importedAt).toLocaleString('en-GB'))}</p>
+          <div class="admin-stats">
+            <div><strong>${summary.reportRows}</strong><small>Report lots</small></div>
+            <div><strong>${summary.matched}</strong><small>Matched on plan</small></div>
+            <div><strong>${summary.unmatched}</strong><small>Unmatched on plan</small></div>
+            <div><strong>${summary.withoutInvoice}</strong><small>No invoice ID</small></div>
+          </div>
+          ${summary.duplicateLotKeys.length?`<p class="admin-unmatched">Warning: ${summary.duplicateLotKeys.length} duplicate LotNumber values in the report. They are not matched automatically.</p>`:''}
+        </div>`:'<div class="helper-card"><strong>No report imported yet</strong><p>The layout and existing lot records are unaffected until you import a local admin report. A new daily report replaces the previous one for this site only.</p></div>'}
+      <div class="admin-file-actions"><button type="button" class="btn btn-light" data-action="adminRemove" ${report?'':'disabled'}>Remove local admin report</button></div>
+      <div class="helper-card"><strong>Data separation</strong><p><b>Export Site JSON</b> contains the drawing. <b>Download admin JSON</b> contains the spreadsheet data, including contact information. Treat admin JSON as confidential. Replacing the daily report never changes your drawings.</p></div>`;
+  }
+  async function importAdminFile(file,format){
+    if(!file)return;
+    if(!localAdminAllowed()){toast('For safety, open YardMap on localhost to import admin data.');return;}
+    if(adminReportsBlocked){toast('Admin storage needs recovery. Existing data is protected from overwrite.');return;}
+    if(file.size>15*1024*1024){toast('Report exceeds the 15 MB file limit.');return;}
+    try{
+      const incoming=format==='excel'
+        ? await ADMIN().parseXlsx(await file.arrayBuffer(),file.name)
+        : ADMIN().validateReport(JSON.parse(await file.text()));
+      const counts=ADMIN().countMatch(incoming,project.objects);
+      const existing=adminReport();
+      const mismatch=existing?.auctionEventId&&incoming.auctionEventId&&existing.auctionEventId!==incoming.auctionEventId;
+      const warning=mismatch?'\nWARNING: AuctionEventID differs from the current site report.':'';
+      if(!window.confirm(`Import admin report to “${project.name}”?\n\nAuctionEventID: ${incoming.auctionEventId||'(unknown)'}\n${counts.reportRows} Excel rows · ${counts.matched} matching drawn lots · ${counts.unmatched} unmatched drawn lots.\n\nThis will replace the admin report for this site, but will not change any site-plan objects.${warning}`))return;
+      const next=Object.assign(Object.create(null),adminReports);
+      next[project.id]=incoming;
+      if(!storeAdminReports(next))return;
+      refreshAll();
+      toast(`Admin report saved locally: ${counts.matched} drawn lots matched.`);
+    }catch(err){
+      console.warn('Local admin import failed:',err?.message||'Unknown error');
+      toast('Admin import failed: '+String(err?.message||err).slice(0,150));
+    }
+  }
+  function exportAdminJson(){
+    const report=adminReport();if(!report){toast('No admin report has been imported for this site.');return;}
+    const json=JSON.stringify(report,null,2);
+    downloadBlob(new Blob([json],{type:'application/json'}),`${safeName(project.name)}-admin-confidential.json`);
+    toast('Confidential admin JSON downloaded locally.');
+  }
+  function removeAdminData(){
+    const report=adminReport();if(!report)return;
+    if(!window.confirm('Remove the imported admin report for this site from this browser? This cannot be undone without your original Excel or admin JSON file. The site plan will remain untouched.'))return;
+    const next=Object.assign(Object.create(null),adminReports);
+    delete next[project.id];
+    if(storeAdminReports(next)){refreshAll();toast('Local admin report removed. Site plan unchanged.');}
+  }
+
   function renderPanel(){
     if(settings.tab==='lots'){renderLotsPanel();return;}
     if(settings.tab==='access'){renderAccessPanel();return;}
+    if(settings.tab==='admin'){renderAdminPanel();return;}
     const o=getSelected();
     if(!o){
       panel.innerHTML=`<h2 class="panel-title">Site Settings</h2><p class="panel-description">Set up the site to match your building. All measurements and object positions use this grid.</p>
@@ -955,6 +1121,7 @@
       html+=`<p class="field-help">Physical size: ${fmt(o.w*project.cellMeters)} × ${fmt(o.h*project.cellMeters)} metres.</p>`;
       html+=fontControlHtml(o);
       html+=field('Notes / buyer / collection details','notes',o.notes,'textarea');
+      html+=adminInfoCard(o);
       html+=`<div class="panel-actions"><button class="btn btn-success" data-action="clearSelected">✓ ${o.status==='cleared'?'Reopen lot':'Green off lot'}</button><button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
     }else if(o.type==='box'){
       html+=field('Area / hazard label','label',o.label,'text','placeholder="e.g. Hazard, Obstruction, Keep Clear"');
@@ -1073,6 +1240,10 @@
   }
   async function handleAction(action){
     const o=getSelected();
+    if(action==='adminExcel'){$('adminExcelFile').click();return;}
+    if(action==='adminJsonImport'){$('adminJsonFile').click();return;}
+    if(action==='adminJsonExport'){exportAdminJson();return;}
+    if(action==='adminRemove'){removeAdminData();return;}
     if(action==='csv'){exportCSV();return;}
     if(action==='png'){exportPNG();return;}
     if(action==='printPreview'){openPrintPreview();return;}
@@ -1180,6 +1351,8 @@
     $('exportBtn').addEventListener('click',exportJSON);
     $('importBtn').addEventListener('click',()=>$('importFile').click());
     $('importFile').addEventListener('change',event=>{importJSON(event.target.files[0]);event.target.value='';});
+    $('adminExcelFile').addEventListener('change',event=>{importAdminFile(event.target.files[0],'excel');event.target.value='';});
+    $('adminJsonFile').addEventListener('change',event=>{importAdminFile(event.target.files[0],'json');event.target.value='';});
     $('undoBtn').addEventListener('click',undo);$('redoBtn').addEventListener('click',redo);
     $('clearCanvasBackup').addEventListener('click',exportJSON);
     $('clearCanvasCancel').addEventListener('click',()=>$('clearCanvasDialog').close());
@@ -1272,6 +1445,6 @@
       requestAnimationFrame(()=>{resizeQueued=false;resizeCanvas();});
     }).observe(wrap);
   }
-  load();wireUI();refreshProjectSelector();refreshStats();renderPanel();setTool('select');
+  load();loadAdminReports();wireUI();refreshProjectSelector();refreshStats();renderPanel();setTool('select');
   requestAnimationFrame(()=>{resizeCanvas();fitView();});
 })();

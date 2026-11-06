@@ -4,10 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101c30">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
   <meta name="description" content="An offline auction site plan and lot clearance tracker. Draw sites, track access and invoice numbers, and export portable JSON files.">
   <title>YardMap — Auction Site Planner</title>
   <link rel="stylesheet" href="styles.css">
 <style id="printPageRules"></style>
+  <script src="invoice-report.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -25,8 +28,8 @@
       <div class="top-actions">
         <span class="save-state" id="saveState" aria-live="polite"><span class="save-dot"></span> Saved on this device</span>
         <button class="btn btn-subtle" id="newBtn" title="Create new local site">+ New</button>
-        <button class="btn btn-subtle" id="importBtn" title="Load a previously exported JSON site plan">Import</button>
-        <button class="btn btn-primary" id="exportBtn" title="Export this site as a portable JSON file">Export JSON <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 17v4h14v-4"/></svg></button>
+        <button class="btn btn-subtle" id="importBtn" title="Load a previously exported JSON site plan">Import Site JSON</button>
+        <button class="btn btn-primary" id="exportBtn" title="Export this site as a portable JSON file">Export Site JSON <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 17v4h14v-4"/></svg></button>
         <input type="file" id="importFile" accept=".json,application/json" hidden>
       </div>
     </header>
@@ -100,11 +103,13 @@
       </main>
 
       <aside class="details-sidebar" aria-label="Site information and editing">
-        <div class="panel-tabs" role="tablist" aria-label="Site information"><button class="panel-tab active" data-tab="properties" role="tab" aria-selected="true">Details</button><button class="panel-tab" data-tab="lots" role="tab" aria-selected="false">Lots <span id="lotsTabCount">0</span></button><button class="panel-tab" data-tab="access" role="tab" aria-selected="false">Access</button></div>
+        <div class="panel-tabs" role="tablist" aria-label="Site information"><button class="panel-tab active" data-tab="properties" role="tab" aria-selected="true">Details</button><button class="panel-tab" data-tab="lots" role="tab" aria-selected="false">Lots <span id="lotsTabCount">0</span></button><button class="panel-tab" data-tab="access" role="tab" aria-selected="false">Access</button><button class="panel-tab" data-tab="admin" role="tab" aria-selected="false">Admin Data</button></div>
         <div id="panelContent" class="panel-content"></div>
       </aside>
     </div>
   </div>
+  <input type="file" id="adminExcelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+  <input type="file" id="adminJsonFile" accept=".json,application/json" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <dialog id="printDialog" class="print-dialog" aria-label="Site plan print preview">
   <div class="print-dialog-header">
