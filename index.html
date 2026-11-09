@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="styles.css">
 <style id="printPageRules"></style>
   <script src="invoice-report.js" defer></script>
+  <script src="collections-core.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -103,13 +104,14 @@
       </main>
 
       <aside class="details-sidebar" aria-label="Site information and editing">
-        <div class="panel-tabs" role="tablist" aria-label="Site information"><button class="panel-tab active" data-tab="properties" role="tab" aria-selected="true">Details</button><button class="panel-tab" data-tab="lots" role="tab" aria-selected="false">Lots <span id="lotsTabCount">0</span></button><button class="panel-tab" data-tab="access" role="tab" aria-selected="false">Access</button><button class="panel-tab" data-tab="admin" role="tab" aria-selected="false">Admin Data</button></div>
+        <div class="panel-tabs" role="tablist" aria-label="Site information"><button class="panel-tab active" data-tab="properties" role="tab" aria-selected="true">Details</button><button class="panel-tab" data-tab="lots" role="tab" aria-selected="false">Lots <span id="lotsTabCount">0</span></button><button class="panel-tab" data-tab="access" role="tab" aria-selected="false">Access</button><button class="panel-tab" data-tab="admin" role="tab" aria-selected="false">Admin Data</button><button class="panel-tab" data-tab="collections" role="tab" aria-selected="false">Collections</button></div>
         <div id="panelContent" class="panel-content"></div>
       </aside>
     </div>
   </div>
   <input type="file" id="adminExcelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
   <input type="file" id="adminJsonFile" accept=".json,application/json" hidden>
+  <input type="file" id="collectionsJsonFile" accept=".json,application/json" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <dialog id="printDialog" class="print-dialog" aria-label="Site plan print preview">
   <div class="print-dialog-header">
@@ -119,8 +121,9 @@
   <div class="print-controls">
     <label>Paper <select id="printPaper"><option value="A4">A4</option><option value="A3">A3</option></select></label>
     <label>Layout <select id="printOrientation"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label>
-    <label class="print-check"><input id="printText" type="checkbox" checked> Show text</label>
-    <label class="print-check"><input id="printGrid" type="checkbox" checked> Show grid</label>
+    <label class="print-check print-site-option"><input id="printText" type="checkbox" checked> Show text</label>
+    <label class="print-check print-site-option"><input id="printGrid" type="checkbox" checked> Show grid</label>
+    <label class="print-check print-site-option"><input id="printContact" type="checkbox" checked> Include lot contacts</label>
     <button id="printGoBtn" class="btn btn-primary" type="button">Print / Save PDF</button>
   </div>
   <div class="print-stage">
@@ -129,6 +132,8 @@
       <div class="print-map-area"><img id="printMap" alt="Site plan for printing"></div>
       <footer class="print-page-footer"><span id="printScale"></span><span id="printCounts"></span></footer>
     </section>
+    <section id="printDirectory" class="print-directory" hidden></section>
+    <section id="printSchedule" class="print-schedule" hidden></section>
   </div>
   <div class="print-dialog-footer"><span id="printSheetSize"></span><span>Preview options do not change the saved site.</span></div>
 </dialog>

@@ -5,6 +5,7 @@
 
   const STORE_KEY = 'yardmap.projects.v1';
   const ADMIN_STORE_KEY = 'yardmap.adminReports.v1';
+  const COLLECTION_STORE_KEY = 'yardmap.collections.v1';
   const EXPORT_SIGNATURE = 'yardmap-site';
   const CELL_PX = 30;
   const MAX_UNDO = 80;
@@ -58,6 +59,10 @@
   let recoveryBlocked=false;
   let adminReports=Object.create(null);
   let adminReportsBlocked=false;
+  let collectionsBySite=Object.create(null);
+  let collectionsBlocked=false;
+  let liveEditKey=null;
+  let printView='site';
   const ADMIN=()=>window.YardMapReport;
   const localAdminAllowed=()=>{
     const u=window.location;
@@ -101,6 +106,222 @@
   // Derived fields resolve live and never modify project objects automatically.
   let cachedReport=null;
   let cachedReportIndex=null;
+  const COLLECTION=()=>window.YardMapCollections;
+  function loadCollections(){
+    if(!localAdminAllowed())return;
+    let source=null;
+    try{
+      source=localStorage.getItem(COLLECTION_STORE_KEY);
+      if(!source)return;
+      const data=JSON.parse(source);
+      if(!data||typeof data!=='object'||Array.isArray(data))throw Error('Invalid collections data');
+      const safe=Object.create(null);
+      for(const [id,records] of Object.entries(data).slice(0,100)){
+        if(id.length<=120)safe[id]=COLLECTION().cleanRecords(records);
+      }
+      collectionsBySite=safe;
+    }catch(err){
+      console.error('Saved collection records were unreadable and have been protected.',err);
+      collectionsBlocked=source!==null;
+    }
+  }
+  function storeCollections(next){
+    if(!localAdminAllowed()||collectionsBlocked){toast('Collection storage is unavailable or needs recovery.');return false;}
+    try{
+      localStorage.setItem(COLLECTION_STORE_KEY,JSON.stringify(next));
+      collectionsBySite=next;
+      return true;
+    }catch(err){
+      console.error('Failed to store local collection data.',err);
+      toast('Collection change not saved; check available browser storage.');
+      return false;
+    }
+  }
+  function collectionKeyForLot(lot){
+    return COLLECTION().keyFor(lot,effectiveInvoiceFor(lot));
+  }
+  function currentCollections(){
+    return localAdminAllowed()?collectionsBySite[project.id]||Object.create(null):Object.create(null);
+  }
+  function collectionForLot(lot){
+    if(lot?.type!=='lot')return COLLECTION().makeDefault();
+    const saved=currentCollections();
+    // A lot may have been annotated before any invoice was available.
+    return COLLECTION().cleanRecord(saved[collectionKeyForLot(lot)]||saved['lot:'+lot.id]);
+  }
+  function migrateUnlinkedCollections(){
+    if(!localAdminAllowed()||collectionsBlocked)return 0;
+    const current=currentCollections(),candidates=new Map();
+    for(const lot of project.objects.filter(o=>o.type==='lot')){
+      const from='lot:'+lot.id,to=collectionKeyForLot(lot);
+      if(from===to||!current[from]||current[to])continue;
+      if(!candidates.has(to))candidates.set(to,[]);
+      candidates.get(to).push(from);
+    }
+    // Only migrate when the invoice has exactly one unlinked source.
+    // Ambiguous older records remain untouched, never silently merged.
+    const records=Object.assign(Object.create(null),current);
+    let moved=0;
+    for(const [to,sources] of candidates){
+      if(sources.length!==1)continue;
+      records[to]=COLLECTION().cleanRecord(records[sources[0]]);
+      delete records[sources[0]];
+      moved++;
+    }
+    if(!moved)return 0;
+    const next=Object.assign(Object.create(null),collectionsBySite);
+    next[project.id]=records;
+    return storeCollections(next)?moved:0;
+  }
+  function updateCollectionForKey(key,fields){
+    if(!key||!localAdminAllowed()||collectionsBlocked)return false;
+    const all=Object.assign(Object.create(null),collectionsBySite);
+    const records=Object.assign(Object.create(null),currentCollections());
+    records[key]=COLLECTION().cleanRecord({...records[key],...fields});
+    all[project.id]=records;
+    return storeCollections(all);
+  }
+  function updateCollectionField(input){
+    const lot=getSelected();
+    if(lot?.type!=='lot')return false;
+    const key=input.dataset.collectionField;
+    if(![...COLLECTION().BOOL_FIELDS,...COLLECTION().TEXT_FIELDS,'bookingDate','bookingTime'].includes(key))return false;
+    let value=input.value;
+    if(COLLECTION().BOOL_FIELDS.includes(key))value=Boolean(input.checked);
+    else if(key==='bookingDate'&&!COLLECTION().validDate(value))value='';
+    else if(key==='bookingTime'&&!COLLECTION().validTime(value))value='';
+    return updateCollectionForKey(collectionKeyForLot(lot),{[key]:value});
+  }
+  function addCollectionNote(){
+    const lot=getSelected();if(lot?.type!=='lot')return;
+    const key=collectionKeyForLot(lot),rec=collectionForLot(lot);
+    const message=rec.draft.trim();
+    if(!message){toast('Type a note before adding it to the log.');return;}
+    const note={id:nextId(),at:new Date().toISOString(),text:message};
+    if(updateCollectionForKey(key,{notes:[...rec.notes,note].slice(-150),draft:''})){
+      renderPanel();
+      const activity=panel.querySelector('.collection-activity');
+      if(activity)activity.open=true;
+      toast('Timestamped collection note added.');
+    }
+  }
+  function collectionSchedule(){
+    const report=adminReport();
+    const index=report?ADMIN().indexReport(report):null;
+    return COLLECTION().scheduleEntries(currentCollections(),project.objects,
+      lot=>effectiveInvoiceFor(lot),lot=>reportForLot(lot)?.row||null,
+      v=>ADMIN().lotKey(v),index?.byInvoice||null);
+  }
+  function exportCollectionsJson(){
+    if(!localAdminAllowed())return;
+    const payload={format:COLLECTION().FORMAT,formatVersion:COLLECTION().VERSION,
+      siteName:project.name,exportedAt:new Date().toISOString(),records:currentCollections()};
+    downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),
+      `${safeName(project.name)}-collections-CONFIDENTIAL.json`);
+    toast('Confidential collections backup downloaded locally.');
+  }
+  async function importCollectionsJson(file){
+    if(!file||!localAdminAllowed()||collectionsBlocked)return;
+    if(file.size>5*1024*1024){toast('Collections JSON exceeds 5 MB.');return;}
+    try{
+      const data=COLLECTION().deserialize(JSON.parse(await file.text()));
+      const count=Object.keys(data).length;
+      if(!window.confirm(`Import ${count} collection records into “${project.name}”? This replaces only this site's collection records. The site plan and daily spreadsheet are not modified.`))return;
+      const all=Object.assign(Object.create(null),collectionsBySite);all[project.id]=data;
+      if(storeCollections(all)){refreshAll();toast(`Imported ${count} collection records.`);}
+    }catch(err){toast('Collection import failed: '+String(err?.message||err).slice(0,140));}
+  }
+  function collectionField(label,name,value,type='text',extra=''){
+    return `<div class="field"><label for="col-${e(name)}">${e(label)}</label>
+      <input id="col-${e(name)}" data-collection-field="${e(name)}" type="${type}" value="${e(value??'')}" ${extra}></div>`;
+  }
+  function collectionCheck(label,name,checked){
+    return `<label class="collection-check"><input type="checkbox" data-collection-field="${e(name)}" ${checked?'checked':''}><span>${e(label)}</span></label>`;
+  }
+  function collectionEditorHtml(lot){
+    if(!localAdminAllowed())return '';
+    const invoice=effectiveInvoiceFor(lot),key=collectionKeyForLot(lot),record=collectionForLot(lot);
+    const siblings=project.objects.filter(o=>o.type==='lot'&&collectionKeyForLot(o)===key);
+    const context=invoice?`Invoice ${e(invoice)} · shared across ${siblings.length} drawn lot(s)`:'Not yet invoiced · linked to this lot';
+    const notes=[...record.notes].reverse();
+    const noteHtml=n=>`<div class="collection-note"><time datetime="${e(n.at)}">${e(new Date(n.at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}))}</time><p>${e(n.text)}</p></div>`;
+    return `<section class="collection-editor">
+      <header><h3>Collection checklist</h3><small>${context}</small></header>
+      <div class="collection-checks">
+        ${collectionCheck('Contacted for payment','contactedForPayment',record.contactedForPayment)}
+        ${collectionCheck('Booked in for collection','bookedIn',record.bookedIn)}
+        ${collectionCheck('RAMS checked','ramsChecked',record.ramsChecked)}
+      </div>
+      <div class="field-grid">
+        ${collectionField('Collection date','bookingDate',record.bookingDate,'date')}
+        ${collectionField('Collection time','bookingTime',record.bookingTime,'time')}
+      </div>
+      <p class="field-help">Appointments appear on the schedule once Booked In and a date are set. A missing time is shown as TBC.</p>
+      <details class="collection-disclosure" ${record.recoveryName||record.recoveryCompany?'open':''}>
+        <summary>Recovering party / transport details</summary>
+        ${collectionField('Contact name','recoveryName',record.recoveryName,'text')}
+        ${collectionField('Company (optional)','recoveryCompany',record.recoveryCompany,'text')}
+        ${collectionField('Phone number','recoveryPhone',record.recoveryPhone,'tel')}
+        ${collectionField('Email','recoveryEmail',record.recoveryEmail,'email')}
+      </details>
+      <details class="collection-disclosure collection-activity">
+        <summary>Notes & activity log <span class="chip">${notes.length}</span></summary>
+        <div class="field"><label for="collectionNoteDraft">New note (draft autosaves)</label>
+          <textarea id="collectionNoteDraft" data-collection-field="draft" rows="3" maxlength="1500" placeholder="E.g. Buyer called about arranging payment…">${e(record.draft)}</textarea></div>
+        <button type="button" class="btn btn-primary" data-action="addCollectionNote">Add timestamped note</button>
+        <div class="collection-log">${notes.length?notes.slice(0,2).map(noteHtml).join(''):'<p class="field-help">No notes yet.</p>'}
+          ${notes.length>2?`<details class="older-collection-notes"><summary>Show ${notes.length-2} older notes</summary>${notes.slice(2).map(noteHtml).join('')}</details>`:''}
+        </div>
+      </details>
+    </section>`;
+  }
+  function scheduleEntryHTML(item){
+    const r=item.record;
+    const invoice=item.invoice?`Invoice ${e(item.invoice)}`:'Unlinked lot booking';
+    const numbers=item.lots.length?item.lots.join(', '):'Not on current drawing';
+    const first=item.lotIds[0];
+    return `<article class="schedule-item">
+      <div class="schedule-item-head"><b>${e(item.time||'Time TBC')}</b><strong>${invoice}</strong></div>
+      <div class="schedule-item-lots">Lots: ${e(numbers)}</div>
+      <div class="schedule-item-info">
+        <div><span>Buyer</span><b>${e(item.buyer||'Not supplied')}</b></div>
+        <div><span>Buyer telephone</span><b>${e([item.mobile,item.telephone].filter(Boolean).join(' / ')||'Not supplied')}</b></div>
+        <div><span>Recovering contact</span><b>${e(r.recoveryName||'Not supplied')}</b></div>
+        <div><span>Company</span><b>${e(r.recoveryCompany||'—')}</b></div>
+        <div><span>Recovery telephone</span><b>${e(r.recoveryPhone||'Not supplied')}</b></div>
+        <div><span>Recovery email</span><b>${e(r.recoveryEmail||'Not supplied')}</b></div>
+      </div>
+      <div class="schedule-foot">Payment contacted: ${r.contactedForPayment?'Yes':'No'} · RAMS: ${r.ramsChecked?'Checked':'Not checked'} · Notes: ${r.notes.length}</div>
+      ${first?`<button type="button" class="btn btn-light schedule-edit" data-select="${e(first)}">Open lot details</button>`:''}
+    </article>`;
+  }
+  function scheduleHTML(){
+    const entries=collectionSchedule(),groups=new Map();
+    for(const entry of entries){
+      if(!groups.has(entry.date))groups.set(entry.date,[]);
+      groups.get(entry.date).push(entry);
+    }
+    if(!entries.length)return '<p class="empty-list">No booked collections with dates yet. Tick Booked In and enter a collection date against the relevant lot.</p>';
+    return [...groups.entries()].map(([date,bookings])=>
+      `<section class="schedule-day"><h3>${e(COLLECTION().formatDate(date))}<span>${bookings.length} appointment(s)</span></h3>
+       ${bookings.map(scheduleEntryHTML).join('')}</section>`).join('');
+  }
+  function renderCollectionsPanel(){
+    if(!localAdminAllowed()){
+      panel.innerHTML='<h2 class="panel-title">Collections · Offline only</h2><p class="admin-unmatched">For customer privacy, collection records are only available from localhost or a local file.</p>';return;
+    }
+    const records=currentCollections();
+    panel.innerHTML=`<h2 class="panel-title">Collection Schedule</h2>
+      <p class="panel-description">One booking per invoice, with every related lot. Dates are ordered chronologically and appointments within each day are sorted by time.</p>
+      <div class="collection-schedule-actions">
+        <button type="button" class="btn btn-primary" data-action="printCollectionSchedule" ${collectionSchedule().length?'':'disabled'}>Print schedule / PDF</button>
+        <button type="button" class="btn btn-light" data-action="exportCollections">Export collections JSON</button>
+        <button type="button" class="btn btn-light" data-action="importCollections">Import collections JSON</button>
+      </div>
+      <p class="field-help">Confidential: collection records are saved separately from the site plan and daily spreadsheet. Export their own JSON backup.</p>
+      ${collectionsBlocked?'<p class="admin-unmatched">Stored collection records need recovery; no overwriting is permitted.</p>':''}
+      ${scheduleHTML()}`;
+  }
   function reportForLot(lot){
     const report=adminReport();
     if(!report||lot?.type!=='lot')return null;
@@ -246,6 +467,7 @@
     s.value=state.activeId;
   }
   function restore(snapshot) {
+    liveEditKey=null;
     const restored=JSON.parse(snapshot);
     const idx=state.projects.findIndex(p=>p.id===project.id);
     state.projects[idx]=sanitizeProject(restored);
@@ -253,13 +475,22 @@
     if (!project.objects.find(o=>o.id===settings.selected)) settings.selected=null;
     scheduleSave();refreshAll();
   }
-  function commit(before) {
-    if (!before) return;
+  function commit(before,liveKey=null) {
+    if(!before)return;
     const after=JSON.stringify(project);
-    if(before===after) return;
-    history.push(before);if(history.length>MAX_UNDO)history.shift();future=[];
+    if(before===after)return;
+    if(!liveKey||liveEditKey!==liveKey){
+      history.push(before);if(history.length>MAX_UNDO)history.shift();
+    }
+    future=[];
+    liveEditKey=liveKey;
     project.updatedAt=new Date().toISOString();
-    scheduleSave();refreshAll();
+    scheduleSave();
+    if(liveKey){
+      // Do not replace the editor while someone is typing: it would discard
+      // focus, cursor selection and the remainder of the input.
+      refreshStats();drawSoon();
+    }else refreshAll();
   }
   const snapshot=()=>JSON.stringify(project);
   function undo() {
@@ -557,7 +788,7 @@
     }
     c.restore();
   }
-  function drawLot(c,o,showText=true) {
+  function drawLot(c,o,showText=true,printContacts=false) {
  if(o.w<=0||o.h<=0)return;
  const color=o.color||STATUS[o.status]?.color||STATUS.pending.color;
  c.fillStyle=color;c.globalAlpha=.2;roundRect(c,o.x+.06,o.y+.06,o.w-.12,o.h-.12,.17);c.fill();c.globalAlpha=1;
@@ -566,6 +797,32 @@
    c.fillStyle=color;roundRect(c,o.x+.05,o.y+.05,Math.min(.22,o.w/4),o.h-.1,.06);c.fill();
  }
  if(!showText)return;
+ if(printContacts){
+   const row=reportForLot(o)?.row;
+   const recovery=collectionForLot(o);
+   const buyer=ADMIN().asText(row?.['dbo.RWX_Invoices::Full Billing Name']);
+   const phone=ADMIN().asText(row?.['mobile::StringNativeValue'])||
+               ADMIN().asText(row?.['tel::StringNativeValue']);
+   const lines=[`LOT ${o.number||'—'}`,`INV ${effectiveInvoiceFor(o)||'—'}`];
+   if(buyer)lines.push(buyer);
+   if(phone)lines.push(phone);
+   if(recovery.recoveryName)lines.push(`Collect: ${recovery.recoveryName}`);
+   if(recovery.recoveryPhone)lines.push(recovery.recoveryPhone);
+   // Max-width scaling keeps concise contact text in the lot footprint;
+   // the dedicated print directory below preserves full-size legibility.
+   const maxLines=Math.min(lines.length,Math.max(2,Math.floor(o.h/.24)));
+   const fontSize=Math.max(.12,Math.min(.38,o.h/(maxLines+1),o.w/Math.max(5,Math.min(12,lines[0].length))));
+   c.save();c.beginPath();c.rect(o.x+.1,o.y+.1,Math.max(.12,o.w-.2),Math.max(.12,o.h-.2));c.clip();
+   c.textAlign='center';c.textBaseline='middle';
+   const top=o.y+o.h/2-((maxLines-1)*fontSize*1.17)/2;
+   for(let k=0;k<maxLines;k++){
+     c.fillStyle=k===0?'#1b344e':'#354c64';
+     c.font=`${k===0?'800':'650'} ${fontSize}px system-ui,sans-serif`;
+     c.fillText(lines[k].slice(0,140),o.x+o.w/2,top+k*fontSize*1.17,Math.max(.12,o.w-.28));
+   }
+   c.restore();
+   return;
+ }
  const f=fontFor(o,baseFont(o));
  c.textAlign='center';c.textBaseline='middle';c.fillStyle='#263a52';c.font=`800 ${f}px system-ui,sans-serif`;
  const main=o.number?`LOT ${o.number}`:'LOT';
@@ -698,7 +955,7 @@
     for(const o of arr){
       c.save();
       if(['wall','door','shutter'].includes(o.type))drawStructure(c,o,showText);
-      else if(o.type==='lot')drawLot(c,o,showText);
+      else if(o.type==='lot')drawLot(c,o,showText,options.printContacts===true);
       else if(o.type==='box')drawBox(c,o,showText);
       else if(o.type==='lock')drawLock(c,o,showText);
       else if(o.type==='label'&&showText)drawLabel(c,o);
@@ -1103,8 +1360,9 @@
       const next=Object.assign(Object.create(null),adminReports);
       next[project.id]=incoming;
       if(!storeAdminReports(next))return;
+      const migrated=migrateUnlinkedCollections();
       refreshAll();
-      toast(`Admin report saved locally: ${counts.matched} drawn lots matched.`);
+      toast(`Admin report saved locally: ${counts.matched} drawn lots matched.${migrated?` ${migrated} earlier collection record(s) linked.`:''}`);
     }catch(err){
       console.warn('Local admin import failed:',err?.message||'Unknown error');
       toast('Admin import failed: '+String(err?.message||err).slice(0,150));
@@ -1128,6 +1386,7 @@
     if(settings.tab==='lots'){renderLotsPanel();return;}
     if(settings.tab==='access'){renderAccessPanel();return;}
     if(settings.tab==='admin'){renderAdminPanel();return;}
+    if(settings.tab==='collections'){renderCollectionsPanel();return;}
     const o=getSelected();
     if(!o){
       panel.innerHTML=`<h2 class="panel-title">Site Settings</h2><p class="panel-description">Set up the site to match your building. All measurements and object positions use this grid.</p>
@@ -1166,7 +1425,7 @@
       return;
     }
     const title={lot:`Lot ${o.number||'—'}`,box:`Area: ${o.label||'Untitled'}`,wall:'Wall',door:'Doorway',shutter:'Roller Shutter',lock:'Lock & Key',label:'Text Label'}[o.type];
-    let html=`<h2 class="panel-title">${e(title)} <span style="font-size:10px;font-weight:600;color:#a2b0c0">· EDIT</span></h2><p class="panel-description">Changes save automatically when you finish editing a field.</p>`;
+    let html=`<h2 class="panel-title">${e(title)} <span style="font-size:10px;font-weight:600;color:#a2b0c0">· EDIT</span></h2><p class="panel-description">Changes save as you type, even when you click directly onto the site plan.</p>`;
     if(o.type==='lot'){
       html+=field('Lot number','number',o.number)+invoiceEditorHtml(o)+linkedContactFields(o);
       html+=field('Clearance status','status',optionsHtml(Object.entries(STATUS).map(([k,v])=>[k,v.label]),o.status),'select');
@@ -1177,6 +1436,7 @@
       html+=`<p class="field-help">Physical size: ${fmt(o.w*project.cellMeters)} × ${fmt(o.h*project.cellMeters)} metres.</p>`;
       html+=fontControlHtml(o);
       html+=field('Notes / buyer / collection details','notes',o.notes,'textarea');
+      html+=collectionEditorHtml(o);
       html+=adminInfoCard(o);
       html+=`<div class="panel-actions"><button class="btn btn-success" data-action="clearSelected">✓ ${o.status==='cleared'?'Reopen lot':'Green off lot'}</button><button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
     }else if(o.type==='box'){
@@ -1241,7 +1501,7 @@
       ${entries.length?entries.map(o=>`<div class="list-item-card" data-select="${e(o.id)}" tabindex="0" role="button"><div class="lot-card-main"><strong>${o.type==='shutter'?'▥':'⇥'} ${e(o.label||o.type)}</strong><small>${fmt(Math.hypot(o.x2-o.x1,o.y2-o.y1)*project.cellMeters)} m opening</small></div>${o.notes?`<div class="key-sub">${e(o.notes.slice(0,100))}</div>`:''}</div>`).join(''):'<div class="empty-list">No entrances marked yet.</div>'}
       <div class="panel-actions"><button class="btn btn-light" data-action="drawLock">+ Add lock</button><button class="btn btn-light" data-action="drawShutter">+ Add shutter</button></div>`;
   }
-  function updateField(input){
+  function updateField(input,live=false){
     const key=input.dataset.field;if(!key)return;
     const obj=getSelected();
     const before=snapshot();
@@ -1258,7 +1518,7 @@
         const num=Number(value);if(!Number.isFinite(num)||num<50||num>250){toast('Text size must be 50–250%.');renderPanel();return;}
         project.textScale=Math.round(num)/100;
       }
-      commit(before);
+      commit(before,live?`${project.id}:site:${key}`:null);
       if(['cols','rows'].includes(key))fitView();
       return;
     }
@@ -1289,7 +1549,7 @@
     }
     if(key==='color'&&!/^#[0-9a-f]{6}$/i.test(value))return;
     obj[key]=value;
-    commit(before);
+    commit(before,live?`${project.id}:${obj.id}:${key}`:null);
   }
   function setBoxPreset(key){
     const o=getSelected();if(!o||o.type!=='box')return;
@@ -1308,6 +1568,10 @@
     if(action==='adminJsonImport'){$('adminJsonFile').click();return;}
     if(action==='adminJsonExport'){exportAdminJson();return;}
     if(action==='adminRemove'){removeAdminData();return;}
+    if(action==='addCollectionNote'){addCollectionNote();return;}
+    if(action==='exportCollections'){exportCollectionsJson();return;}
+    if(action==='importCollections'){$('collectionsJsonFile').click();return;}
+    if(action==='printCollectionSchedule'){openPrintPreview('schedule');return;}
     if(action==='followAdminInvoice'){
       if(o?.type!=='lot'||!importedInvoiceFor(o))return;
       const before=snapshot();o.invoice='';commit(before);
@@ -1373,41 +1637,83 @@
  toast(project.showText===false?'Map text hidden (data preserved)':'Map text visible');
 }
 
-  function openPrintPreview() {
- const dialog=$('printDialog');
- $('printPaper').value='A4';
- $('printOrientation').value=project.cols>=project.rows?'landscape':'portrait';
- $('printText').checked=project.showText!==false;
- $('printGrid').checked=true;
- dialog.showModal();
- renderPrintPreview();
-}
-
+  function printContactDirectory(){
+    const lots=project.objects.filter(o=>o.type==='lot').sort((a,b)=>
+      ADMIN().lotKey(a.number).localeCompare(ADMIN().lotKey(b.number),undefined,{numeric:true}));
+    if(!lots.length)return '';
+    const rows=lots.map(lot=>{
+      const row=reportForLot(lot)?.row;
+      const booking=collectionForLot(lot);
+      const date=booking.bookedIn&&booking.bookingDate?`${booking.bookingDate} ${booking.bookingTime||'TBC'}`:'—';
+      const buyer=ADMIN().asText(row?.['dbo.RWX_Invoices::Full Billing Name']);
+      const phones=[row?.['mobile::StringNativeValue'],row?.['tel::StringNativeValue']].filter(Boolean);
+      return `<tr><td><strong>${e(lot.number||'—')}</strong></td>
+        <td>${e(effectiveInvoiceFor(lot)||'—')}</td>
+        <td>${e(buyer||'—')}</td>
+        <td>${e(phones.join(' / ')||'—')}</td>
+        <td>${e(booking.recoveryName||'—')} ${booking.recoveryPhone?`<small>${e(booking.recoveryPhone)}</small>`:''}</td>
+        <td>${e(date)}</td></tr>`;
+    }).join('');
+    return `<header class="directory-head"><h2>${e(project.name)} · Lot contact directory</h2>
+      <p>Confidential · generated locally · ${lots.length} placed lots · ${e(new Date().toLocaleString('en-GB'))}</p>
+      <p>Compact contacts appear inside lot shapes where space permits. This directory provides a readable reference for every lot.</p></header>
+      <table class="print-contact-table"><thead><tr><th>Lot</th><th>Invoice</th><th>Buyer / contact</th><th>Buyer telephone</th><th>Recovering contact</th><th>Booked</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  }
+  function printScheduleContent(){
+    return `<header class="directory-head"><h2>${e(project.name)} · Collection schedule</h2>
+      <p>Confidential · generated locally · ${e(new Date().toLocaleString('en-GB'))}</p>
+      <p>Bookings grouped by date, in time order. Contact and RAMS status are drawn from locally stored records.</p></header>
+      ${scheduleHTML()}`;
+  }
+  function openPrintPreview(mode='site') {
+    printView=mode==='schedule'?'schedule':'site';
+    $('printPaper').value='A4';
+    $('printOrientation').value=printView==='schedule'?'portrait':project.cols>=project.rows?'landscape':'portrait';
+    $('printText').checked=project.showText!==false;
+    $('printGrid').checked=true;
+    $('printContact').checked=true;
+    for(const option of document.querySelectorAll('.print-site-option')){
+      option.hidden=printView==='schedule';
+    }
+    $('printDialog').showModal();
+    renderPrintPreview();
+  }
   function renderPrintPreview() {
- const paper=$('printPaper').value==='A3'?'A3':'A4';
- const orientation=$('printOrientation').value==='portrait'?'portrait':'landscape';
- const showText=$('printText').checked;
- const grid=$('printGrid').checked;
- const sizes=paper==='A3'?[297,420]:[210,297];
- const mmW=orientation==='landscape'?sizes[1]:sizes[0],mmH=orientation==='landscape'?sizes[0]:sizes[1];
- const mapW=Math.max(1,Math.round((mmW-24)*5));
- const mapH=Math.max(1,Math.round((mmH-52)*5));
- const render=document.createElement('canvas');render.width=mapW;render.height=mapH;
- const c=render.getContext('2d');
- const px=Math.min((mapW-10)/project.cols,(mapH-10)/project.rows);
- const ox=(mapW-project.cols*px)/2,oy=(mapH-project.rows*px)/2;
- paint(c,mapW,mapH,ox,oy,px,{export:true,grid,showText});
- $('printMap').src=render.toDataURL('image/png');
- $('printPage').style.aspectRatio=`${mmW} / ${mmH}`;
- $('printSiteName').textContent=project.name;
- $('printMeta').textContent=`${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m · ${paper} ${orientation}`;
- $('printScale').textContent=`1 grid square = ${fmt(project.cellMeters)} m · diagram fitted to page (not a measured print scale)`;
- const total=project.objects.filter(x=>x.type==='lot');
- const done=total.filter(x=>x.status==='cleared').length;
- $('printCounts').textContent=`Lots: ${total.length} · Cleared: ${done} · Pending: ${total.length-done}`;
- $('printSheetSize').textContent=`${paper} ${orientation} · labels ${showText?'on':'off'} · grid ${grid?'on':'off'}`;
- $('printPageRules').textContent=`@media print{@page{size:${paper} ${orientation};margin:0}}`;
-}
+    const paper=$('printPaper').value==='A3'?'A3':'A4';
+    const orientation=$('printOrientation').value==='portrait'?'portrait':'landscape';
+    $('printPageRules').textContent=`@media print{@page{size:${paper} ${orientation};margin:0}}`;
+    const isSchedule=printView==='schedule';
+    $('printPage').hidden=isSchedule;
+    $('printDirectory').hidden=isSchedule;
+    $('printSchedule').hidden=!isSchedule;
+    $('printDialog').classList.toggle('mode-schedule',isSchedule);
+    if(isSchedule){
+      $('printSchedule').innerHTML=printScheduleContent();
+      $('printSheetSize').textContent=`${paper} ${orientation} · ${collectionSchedule().length} booked collection(s)`;
+      return;
+    }
+    const showText=$('printText').checked,grid=$('printGrid').checked;
+    const contact=$('printContact').checked;
+    const mm=paper==='A3'?[297,420]:[210,297];
+    const mmW=orientation==='landscape'?mm[1]:mm[0],mmH=orientation==='landscape'?mm[0]:mm[1];
+    const width=Math.max(1,Math.round((mmW-24)*5)),height=Math.max(1,Math.round((mmH-52)*5));
+    const render=document.createElement('canvas');render.width=width;render.height=height;
+    const c=render.getContext('2d');
+    const px=Math.min((width-10)/project.cols,(height-10)/project.rows);
+    const ox=(width-project.cols*px)/2,oy=(height-project.rows*px)/2;
+    paint(c,width,height,ox,oy,px,{export:true,grid,showText,printContacts:contact});
+    $('printMap').src=render.toDataURL('image/png');
+    $('printPage').style.aspectRatio=`${mmW} / ${mmH}`;
+    $('printSiteName').textContent=project.name;
+    $('printMeta').textContent=`${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m · ${paper} ${orientation}`;
+    $('printScale').textContent=`1 grid square = ${fmt(project.cellMeters)} m · diagram fitted to page (not a measured print scale)`;
+    const lots=project.objects.filter(x=>x.type==='lot');
+    $('printCounts').textContent=`Lots: ${lots.length} · Cleared: ${lots.filter(x=>x.status==='cleared').length}`;
+    $('printDirectory').hidden=!contact;
+    $('printDirectory').innerHTML=contact?printContactDirectory():'';
+    $('printSheetSize').textContent=`${paper} ${orientation} · contacts ${contact?'included':'hidden'} · grid ${grid?'on':'off'}`;
+  }
 
   function printPlan() {
  renderPrintPreview();
@@ -1423,6 +1729,7 @@
     $('importFile').addEventListener('change',event=>{importJSON(event.target.files[0]);event.target.value='';});
     $('adminExcelFile').addEventListener('change',event=>{importAdminFile(event.target.files[0],'excel');event.target.value='';});
     $('adminJsonFile').addEventListener('change',event=>{importAdminFile(event.target.files[0],'json');event.target.value='';});
+    $('collectionsJsonFile').addEventListener('change',event=>{importCollectionsJson(event.target.files[0]);event.target.value='';});
     $('undoBtn').addEventListener('click',undo);$('redoBtn').addEventListener('click',redo);
     $('clearCanvasBackup').addEventListener('click',exportJSON);
     $('clearCanvasCancel').addEventListener('click',()=>$('clearCanvasDialog').close());
@@ -1435,7 +1742,7 @@
     $('textToggleBtn').addEventListener('click',setTextVisibility);
     $('printPreviewBtn').addEventListener('click',openPrintPreview);
     $('printCloseBtn').addEventListener('click',()=>$('printDialog').close());
-    for(const id of ['printPaper','printOrientation','printText','printGrid']){
+    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact']){
       $(id).addEventListener('change',renderPrintPreview);
     }
     $('printGoBtn').addEventListener('click',printPlan);
@@ -1457,10 +1764,23 @@
       zoomAt(event.deltaY<0?1.12:1/1.12,event.clientX-r.left,event.clientY-r.top);
     },{passive:false});
     panel.addEventListener('change',event=>{
-      if(event.target.matches('[data-field]'))updateField(event.target);
+      if(event.target.matches('[data-field]')){
+        updateField(event.target);
+        if(event.target.dataset.field==='invoice')migrateUnlinkedCollections();
+        liveEditKey=null;
+        renderPanel();
+      }
+      if(event.target.matches('[data-collection-field]')){
+        updateCollectionField(event.target);
+      }
     });
     panel.addEventListener('input',event=>{
-      if(event.target.id==='lotSearch'){settings.lotSearch=event.target.value;renderLotList();}
+      if(event.target.id==='lotSearch'){settings.lotSearch=event.target.value;renderLotList();return;}
+      if(event.target.matches('[data-collection-field]')){updateCollectionField(event.target);return;}
+      if(event.target.matches('[data-field]'))updateField(event.target,true);
+    });
+    panel.addEventListener('focusout',event=>{
+      if(event.target.matches('[data-field]'))liveEditKey=null;
     });
     panel.addEventListener('click',event=>{
       const clear=event.target.closest('[data-clear]');
@@ -1515,6 +1835,6 @@
       requestAnimationFrame(()=>{resizeQueued=false;resizeCanvas();});
     }).observe(wrap);
   }
-  load();loadAdminReports();wireUI();refreshProjectSelector();refreshStats();renderPanel();setTool('select');
+  load();loadAdminReports();loadCollections();wireUI();refreshProjectSelector();refreshStats();renderPanel();setTool('select');
   requestAnimationFrame(()=>{resizeCanvas();fitView();});
 })();
