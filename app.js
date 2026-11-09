@@ -250,7 +250,12 @@
     const records=Object.assign(Object.create(null),currentCollections());
     records[key]=COLLECTION().cleanRecord({...records[key],...fields});
     all[project.id]=records;
-    return storeCollections(all);
+    const saved=storeCollections(all);
+    if(saved){
+      const status=panel.querySelector('.collection-save-status');
+      if(status)status.textContent='✓ Saved locally on this device';
+    }
+    return saved;
   }
   function activeCollectionKey(){
     if(settings.tab==='collections')return settings.collectionsSelectedKey;
@@ -327,6 +332,7 @@
     const noteHtml=n=>`<div class="collection-note"><time datetime="${e(n.at)}">${e(new Date(n.at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}))}</time><p>${e(n.text)}</p></div>`;
     return `<section class="collection-editor">
       <header><h3>Collection checklist</h3><small>${context}</small></header>
+      <div class="collection-save-status" role="status" aria-live="polite">Changes save automatically on this device.</div>
       <div class="collection-checks">
         ${collectionCheck('Contacted for payment','contactedForPayment',record.contactedForPayment)}
         ${collectionCheck('Booked in for collection','bookedIn',record.bookedIn)}
@@ -849,6 +855,7 @@
   function switchTab(tab){
     const allowed=settings.mode==='admin'?['admin','collections','schedule']:['properties','lots','access'];
     if(!allowed.includes(tab))return;
+    const changed=settings.tab!==tab;
     settings.tab=tab;
     if(settings.mode==='admin')settings.lastAdminTab=tab;
     for(const b of document.querySelectorAll('[data-tab]')){
@@ -862,6 +869,16 @@
       admin:'Daily Excel import',collections:'Invoice and collection records',schedule:'Collection schedule'
     })[tab]);
     renderPanel();
+    if(changed){
+      panel.scrollTop=0;
+      if(settings.mode==='admin'&&typeof window.scrollTo==='function')window.scrollTo(0,0);
+    }
+  }
+  function focusPanelHeading(){
+    const heading=panel.querySelector('h2');
+    if(!heading)return;
+    heading.tabIndex=-1;
+    heading.focus();
   }
   function switchMode(mode){
     if(mode!=='map'&&mode!=='admin')return;
@@ -1816,7 +1833,7 @@
       settings.collectionsSelectedKey=collectionKeyForLot(o);
       switchMode('admin');
       switchTab('collections');
-      panel.scrollTop=0;
+      panel.scrollTop=0;focusPanelHeading();
       return;
     }
     if(action==='adminRemove'){removeAdminData();return;}
@@ -2092,7 +2109,7 @@
         const dest=nextStep.dataset.adminNext;
         if(dest==='admin'||dest==='collections'||dest==='schedule'){
           if(dest==='collections')settings.collectionsSelectedKey=null;
-          switchTab(dest);panel.scrollTop=0;
+          switchTab(dest);panel.scrollTop=0;focusPanelHeading();
         }
         return;
       }
@@ -2103,14 +2120,14 @@
       }
       if(event.target.closest('[data-collection-back]')){
         settings.collectionsSelectedKey=null;
-        renderPanel();panel.scrollTop=0;return;
+        renderPanel();panel.scrollTop=0;focusPanelHeading();return;
       }
       const collection=event.target.closest('[data-collection-select]');
       if(collection){
         settings.collectionsSelectedKey=collection.dataset.collectionSelect;
         settings.collectionsView='list';
         switchTab('collections');
-        panel.scrollTop=0;return;
+        panel.scrollTop=0;focusPanelHeading();return;
       }
       const clear=event.target.closest('[data-clear]');
       if(clear){event.stopPropagation();

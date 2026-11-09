@@ -742,3 +742,16 @@
 @media print{
  .theme-dark,.theme-dark body,.theme-dark .app-shell{color:#111!important;background:#fff!important}
 }
+
+/* Accessible post-navigation heading and nonintrusive collection save cue. */
+.admin-step-page h2:focus-visible,.collection-list-editor h2:focus-visible{
+ outline:3px solid #337bd6;outline-offset:6px;border-radius:4px
+}
+.collection-save-status{
+ display:inline-flex;align-items:center;min-height:33px;padding:7px 10px;margin:2px 0 11px;
+ background:#e9f7ef;border:1px solid #b8dfc9;color:#236947;border-radius:8px;
+ font-size:12px;font-weight:750;line-height:1.35
+}
+.theme-dark .collection-save-status{
+ background:#1c4737;border-color:#39795a;color:#c4f4dc
+}
