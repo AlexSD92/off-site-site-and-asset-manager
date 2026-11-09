@@ -6,6 +6,9 @@ const BOOL_FIELDS=["contactedForPayment","bookedIn","ramsChecked"];
 const max=(v,n=250)=>String(v??"").slice(0,n);
 const validDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(new Date(v+"T12:00:00").getTime())&&new Date(v+"T12:00:00").toISOString().slice(0,10)===v;
 const validTime=v=>/^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+const halfHourTime=v=>validTime(v)&&(v.endsWith(':00')||v.endsWith(':30'));
+const timeSlots=Object.freeze(Array.from({length:48},(_,i)=>
+  String(Math.floor(i/2)).padStart(2,'0')+':'+(i%2?'30':'00')));
 const keyFor=(lot,invoice)=>invoice?`inv:${String(invoice).trim()}`:`lot:${lot.id}`;
 function cleanRecord(raw){
  const r=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{};
@@ -14,7 +17,7 @@ function cleanRecord(raw){
  out.bookingDate=validDate(r.bookingDate)?r.bookingDate:"";
  out.bookingTime=validTime(r.bookingTime)?r.bookingTime:"";
  for(const key of TEXT_FIELDS)out[key]=max(r[key],key==="draft"?1500:200);
- out.notes=Array.isArray(r.notes)?r.notes.slice(-150).filter(n=>n&&typeof n==="object").map(n=>({
+ out.notes=Array.isArray(r.notes)?r.notes.filter(n=>n&&typeof n==="object").map(n=>({
   id:max(n.id,90),
   at:Number.isFinite(Date.parse(n.at))?new Date(n.at).toISOString():"",
   text:max(n.text,1500)
@@ -115,5 +118,5 @@ function scheduleEntries(records,lots,getInvoice,lookupRow,lotKey,invoiceGroup,r
  return out;
 }
 
-window.YardMapCollections=Object.freeze({FORMAT,VERSION,TEXT_FIELDS,BOOL_FIELDS,validDate,validTime,keyFor,cleanRecord,cleanRecords,makeDefault,deserialize,formatDate,listEntries,scheduleEntries});
+window.YardMapCollections=Object.freeze({FORMAT,VERSION,TEXT_FIELDS,BOOL_FIELDS,validDate,validTime,halfHourTime,timeSlots,keyFor,cleanRecord,cleanRecords,makeDefault,deserialize,formatDate,listEntries,scheduleEntries});
 })();

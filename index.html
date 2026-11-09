@@ -107,6 +107,10 @@
           
           <div class="scale-badge" aria-live="polite"><span id="scaleMeasure">5 m</span><div id="scaleLine" class="scale-line"></div><small id="scaleHint">1 square = 1 m</small></div>
           <div class="canvas-note" id="canvasNote">Select a tool to get started</div>
+          <div class="map-highlight-notice" id="mapHighlightNotice" role="status" aria-live="polite" hidden>
+            <span id="mapHighlightText">Highlighted lots</span>
+            <button type="button" id="mapHighlightDismiss" aria-label="Dismiss highlighted lots">×</button>
+          </div>
           <div class="mobile-canvas-controls"><button id="mobilePan" title="Toggle pan mode">Pan</button><button id="mobileGreen" title="Toggle green-off mode">✓ Clear</button><button id="mobileDelete" title="Tap an item to delete (undo available)">⌫ Delete</button></div>
         </div>
         <div class="canvas-footer"><span><span class="footer-key">●</span> Autosave · this browser only</span><span id="activeToolHelp">Select & move items</span></div>

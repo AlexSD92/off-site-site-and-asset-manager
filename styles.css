@@ -755,3 +755,47 @@
 .theme-dark .collection-save-status{
  background:#1c4737;border-color:#39795a;color:#c4f4dc
 }
+
+/* Invoice triage: visible, keyboard-readable status for work completed. */
+.collection-search-sort{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(230px,1fr);align-items:end;gap:16px;margin:16px 0 5px}
+.collection-search-sort>div{min-width:0}
+.collection-search-sort .collections-search-label{margin:0 0 8px}
+.collection-search-sort .search-input{width:100%;min-height:48px;max-width:none}
+.collection-results-count{font-size:12px;line-height:1.4;font-weight:750;color:#59758f;margin:6px 0 12px}
+.collection-progress{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.progress-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:800;line-height:1.35;white-space:normal;overflow-wrap:anywhere}
+.progress-chip.is-done{background:#e0f6e9;border:1px solid #9fd8b6;color:#176941}
+.progress-chip.is-pending{background:#edf2f6;border:1px solid #d6e0e9;color:#647d95}
+.collection-list-card.invoice-cleared{border-color:#72c298;background:#f3fcf6}
+.collection-list-card.invoice-cleared strong{color:#166f43}
+.collection-list-card .collection-progress{margin:8px 0 2px}
+.collection-list-card .progress-chip{font-size:11px}
+.collection-list-editor>.collection-progress{margin:10px 0 15px}
+.collection-lot-title{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.collection-lot-title strong{font-size:13px;color:#234c79}
+.lot-cleared-badge,.lot-map-pending,.lot-not-drawn{display:inline-flex;align-items:center;border-radius:6px;font-size:11px;font-weight:800;padding:5px 8px}
+.lot-cleared-badge{background:#ddf7e7;color:#126c3c;border:1px solid #98d7ad}
+.lot-map-pending{background:#f5f1e8;color:#826a3c;border:1px solid #e6d9bb}
+.lot-not-drawn{background:#eef3f8;color:#697e92;border:1px solid #dce6f0}
+.collection-report-lot.lot-row-cleared{background:#f0fbf3;border-left:4px solid #31a563;border-radius:7px;padding:10px 12px;margin:5px 0}
+.collection-view-map{margin:3px 0 14px;min-height:43px;white-space:normal}
+.lot-tools .sort-label{display:block;font-size:11px;font-weight:850;color:#58718b;margin:10px 0 6px}
+.lot-tools #lotSort{width:100%;min-height:42px}
+.map-highlight-notice{position:absolute;z-index:11;left:50%;top:18px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:min(92%,640px);padding:12px 14px;background:#fff4d4;border:2px solid #d6a229;border-radius:10px;color:#5e3f07;font-size:13px;font-weight:850;box-shadow:0 8px 25px #3c280a33;pointer-events:auto}
+.map-highlight-notice[hidden]{display:none!important}
+.map-highlight-notice span{overflow-wrap:anywhere}
+.map-highlight-notice button{background:#744a0a;color:#fff;flex:0 0 32px;min-width:32px;min-height:32px;border:0;border-radius:8px;cursor:pointer;font-size:22px}
+.theme-dark .progress-chip.is-done,.theme-dark .lot-cleared-badge{background:#1b5138;color:#b9ffda;border-color:#418b63}
+.theme-dark .progress-chip.is-pending,.theme-dark .lot-not-drawn{background:#283e56;color:#c5d8ec;border-color:#4d637c}
+.theme-dark .lot-map-pending{background:#4b4029;color:#ffe0a9;border-color:#887044}
+.theme-dark .collection-list-card.invoice-cleared,.theme-dark .collection-report-lot.lot-row-cleared{background:#1b3e32;border-color:#3e9b69}
+.theme-dark .collection-list-card.invoice-cleared strong,.theme-dark .collection-lot-title strong{color:#b8f4d1}
+.theme-dark .collection-results-count,.theme-dark .lot-tools .sort-label{color:#b8cee6}
+.theme-dark .map-highlight-notice{background:#483615;border-color:#dfb644;color:#ffe7a0}
+.theme-dark .map-highlight-notice button{background:#ecd08b;color:#4b320d}
+@media(max-width:850px){.collection-search-sort{grid-template-columns:1fr;gap:9px}}
+@media(max-width:500px){.map-highlight-notice{top:8px;font-size:11px;padding:8px 10px}.progress-chip{font-size:10px}}
+@media print{.map-highlight-notice{display:none!important}}
+
+.stale-invoice-warning{padding:10px 12px;margin:0 0 12px;font-weight:800;font-size:12px;line-height:1.5;color:#7b4d18;background:#fff3dc;border:1px solid #e5c491;border-radius:8px}
+.theme-dark .stale-invoice-warning{background:#4d3a22;color:#ffda9d;border-color:#a0804a}
