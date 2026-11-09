@@ -43,7 +43,8 @@
   const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const safeName = s => String(s || 'site').replace(/[^a-z0-9 _-]/gi, '_').trim().replace(/\s+/g,'-').slice(0,70) || 'site';
   const fmt = n => Number(n.toFixed(2)).toString();
-  const settings = { tab:'properties', tool:'select', lotFilter:'all', lotSearch:'', selected:null, panFromSpace:false,
+  const settings = { tab:'properties', mode:'map', lastAdminTab:'admin', tool:'select',
+    lotFilter:'all', lotSearch:'', selected:null, panFromSpace:false,
     collectionsView:'list', collectionsSelectedKey:null, collectionsSearch:'' };
   const view = {zoom:1, offsetX:0, offsetY:0, width:900, height:580, fitted:false};
   const pointers = new Map();
@@ -394,30 +395,35 @@
   }
   function renderCollectionsPanel(){
     if(!localAdminAllowed()){
-      panel.innerHTML='<h2 class="panel-title">Collections · Offline only</h2><p class="admin-unmatched">For customer privacy, collection records are only available from localhost or a local file.</p>';
+      panel.innerHTML='<h2 class="panel-title">Collections · Local only</h2><p class="admin-unmatched">Customer collection records are disabled on hosted sites. Open YardMap on localhost instead.</p>';
       return;
     }
-    const entries=collectionsListEntries();
-    const booked=collectionSchedule();
-    const mode=settings.collectionsView==='schedule'?'schedule':'list';
-    const controls=`<div class="collections-view-switch" role="group" aria-label="Collections view">
-      <button type="button" data-collections-view="list" class="${mode==='list'?'active':''}" aria-pressed="${mode==='list'}">Lot / Invoice List</button>
-      <button type="button" data-collections-view="schedule" class="${mode==='schedule'?'active':''}" aria-pressed="${mode==='schedule'}">Schedule (${booked.length})</button>
-    </div>
-    <div class="collection-schedule-actions">
-      <button type="button" class="btn btn-primary" data-action="printCollectionSchedule" ${booked.length?'':'disabled'}>Print schedule / PDF</button>
-      <button type="button" class="btn btn-light" data-action="exportCollections">Export collections JSON</button>
-      <button type="button" class="btn btn-light" data-action="importCollections">Import collections JSON</button>
-    </div>`;
-    if(mode==='schedule'){
-      panel.innerHTML=`<h2 class="panel-title">Collection Schedule</h2>
-        <p class="panel-description">Appointments organised by date and time, including invoices that have never been drawn on the plan.</p>
-        ${controls}${scheduleHTML()}`;
+    const entries=collectionsListEntries(),booked=collectionSchedule();
+    if(settings.tab==='schedule'){
+      panel.innerHTML=`<section class="admin-step-page">
+        <span class="admin-step-label">STEP 3 OF 3 · COLLECTION SCHEDULE</span>
+        <h2>Review upcoming collections</h2>
+        <p class="admin-step-intro">Appointments are grouped by date, then sorted by time. Each invoice appears once, even if it covers several lots. You can print the schedule without drawing a map.</p>
+        <div class="schedule-top-actions">
+          <button type="button" class="btn btn-primary" data-action="printCollectionSchedule" ${booked.length?'':'disabled'}>Print schedule / Save PDF</button>
+          <button type="button" class="btn btn-light" data-admin-next="collections">Edit invoices and notes</button>
+        </div>
+        <div class="schedule-summary-count"><strong>${booked.length}</strong><span>booked collection${booked.length===1?'':'s'}</span></div>
+        ${scheduleHTML()}
+      </section>`;
       return;
     }
     const selected=entries.find(x=>x.key===settings.collectionsSelectedKey);
     if(selected){
-      panel.innerHTML=controls+selectedCollectionHtml(selected);
+      panel.innerHTML=`<section class="admin-step-page">
+        <span class="admin-step-label">STEP 2 OF 3 · UPDATE COLLECTION</span>
+        ${selectedCollectionHtml(selected)}
+        <div class="admin-next-step">
+          <span>NEXT STEP</span>
+          <strong>When you've recorded the arrangements, review the date-ordered schedule.</strong>
+          <button type="button" class="btn btn-primary" data-admin-next="schedule">Review collection schedule</button>
+        </div>
+      </section>`;
       return;
     }
     const query=settings.collectionsSearch.trim().toLowerCase();
@@ -426,22 +432,41 @@
       return [item.invoice,item.key,item.lots.join(' '),row['dbo.RWX_Invoices::Full Billing Name'],
         row['mobile::StringNativeValue'],row['dbo.RWX_Users 2::UserName']].join(' ').toLowerCase().includes(query);
     });
-    panel.innerHTML=`<h2 class="panel-title">Collections List</h2>
-      <p class="panel-description">All ${entries.length} invoice / lot group(s), including those imported from Excel without a site drawing. Open any record to book, add notes or update the checklist.</p>
-      ${controls}
-      ${collectionsBlocked?'<p class="admin-unmatched">Saved collection records need recovery. The existing data cannot be overwritten.</p>':''}
-      <label class="collections-search-label" for="collectionsSearch">Search invoices, lots or buyers</label>
-      <input type="search" id="collectionsSearch" class="search-input" placeholder="Invoice, lot number or buyer…" value="${e(settings.collectionsSearch)}">
-      <div id="collectionsListResults" class="collections-list-results">
+    const hasReport=!!adminReport();
+    panel.innerHTML=`<section class="admin-step-page">
+      <span class="admin-step-label">STEP 2 OF 3 · INVOICES & COLLECTIONS</span>
+      <h2>Find an invoice and record the arrangements</h2>
+      <p class="admin-step-intro">Search for a buyer, invoice or lot number. Open the record, tick the collection checklist, enter the booking date and add notes as you go. Everything saves locally as you type.</p>
+      <div class="admin-collection-counts">
+        <span><b>${entries.length}</b> invoice / lot records</span>
+        <span><b>${booked.length}</b> booked collections</span>
+        <span>${hasReport?'✓ Daily Excel loaded':'Excel not yet imported'}</span>
+      </div>
+      ${collectionsBlocked?'<p class="admin-unmatched">Saved collection records need recovery. Existing records are protected against overwrite.</p>':''}
+      ${!hasReport?`<div class="admin-import-prompt"><strong>Start with the daily spreadsheet</strong>
+        <p>Import the Excel export to create an invoice list automatically. You can still create a temporary lot below.</p>
+        <button type="button" class="btn btn-primary" data-admin-next="admin">Import Excel first</button>
+      </div>`:''}
+      <label class="collections-search-label" for="collectionsSearch">Search invoices, buyers or lot numbers</label>
+      <input type="search" id="collectionsSearch" class="search-input" placeholder="Type invoice number, lot number or buyer…" value="${e(settings.collectionsSearch)}">
+      <div class="collections-list-results" id="collectionsListResults">
         ${visible.length?visible.map(collectionListCard).join(''):
-          '<p class="empty-list">No matching records. Import the daily Excel file under Admin Data, or create a temporary lot record below.</p>'}
+          '<p class="empty-list">No matching invoices. Import Excel in Step 1 or create a temporary lot below.</p>'}
       </div>
-      <div class="collection-manual-add">
-        <label for="collectionsNewLot">Need to log a lot before it appears in Excel?</label>
-        <div><input id="collectionsNewLot" type="text" maxlength="90" placeholder="Lot number, e.g. 124">
-          <button type="button" class="btn btn-light" data-action="addUndrawnLot">Add lot</button></div>
+      <details class="admin-advanced collection-manual-more">
+        <summary>Need to record a lot before it's in Excel?</summary>
+        <div class="collection-manual-add">
+          <label for="collectionsNewLot">Lot number</label>
+          <div><input id="collectionsNewLot" type="text" maxlength="90" placeholder="e.g. 124">
+            <button type="button" class="btn btn-light" data-action="addUndrawnLot">Create lot record</button></div>
+          <p>This adds a collection record only; no rectangle is drawn on the map.</p>
+        </div>
+      </details>
+      <div class="admin-next-inline">
+        <span>Finished updating the day's invoices?</span>
+        <button type="button" class="btn btn-primary" data-admin-next="schedule">Go to collection schedule</button>
       </div>
-      <p class="field-help">Bookings, recovery contacts and timestamped notes are saved separately on this device. A map drawing is optional.</p>`;
+    </section>`;
   }
   function reportForLot(lot){
     const report=adminReport();
@@ -774,12 +799,40 @@
     drawSoon();
   }
   function switchTab(tab){
+    const allowed=settings.mode==='admin'?['admin','collections','schedule']:['properties','lots','access'];
+    if(!allowed.includes(tab))return;
     settings.tab=tab;
+    if(settings.mode==='admin')settings.lastAdminTab=tab;
     for(const b of document.querySelectorAll('[data-tab]')){
-      b.classList.toggle('active',b.dataset.tab===tab);
-      b.setAttribute('aria-selected',String(b.dataset.tab===tab));
+      const active=b.dataset.tab===tab;
+      b.classList.toggle('active',active);
+      b.setAttribute('aria-selected',String(active));
     }
     renderPanel();
+  }
+  function switchMode(mode){
+    if(mode!=='map'&&mode!=='admin')return;
+    if(settings.mode===mode)return;
+    settings.mode=mode;
+    const shell=$('appShell');
+    shell.classList.toggle('mode-map',mode==='map');
+    shell.classList.toggle('mode-admin',mode==='admin');
+    for(const [id,isActive] of [['modeMapBtn',mode==='map'],['modeAdminBtn',mode==='admin']]){
+      const button=$(id);
+      button.classList.toggle('active',isActive);
+      button.setAttribute('aria-pressed',String(isActive));
+    }
+    $('saveBannerHint').textContent=mode==='map'
+      ? 'Changes stay in this browser. Use Import / Export Site JSON above for a map backup.'
+      : 'Collection records and daily Excel stay on this device. Keep the original Excel report securely.';
+    panel.scrollTop=0;
+    if(mode==='admin'){
+      if(settings.tool!=='select')setTool('select');
+      switchTab(settings.lastAdminTab||'admin');
+    }else{
+      switchTab('properties');
+      requestAnimationFrame(()=>{resizeCanvas();drawSoon();});
+    }
   }
   function selectObject(id,showDetails=true,focus=false){
     if(id&&settings.tool==='move-all')setTool('select');
@@ -1434,38 +1487,46 @@
   }
   function renderAdminPanel(){
     if(!localAdminAllowed()){
-      panel.innerHTML=`<h2 class="panel-title">Admin Data · Offline only</h2>
-        <div class="helper-card"><strong>Import disabled on hosted websites</strong>
-        <p>For customer privacy, Excel/JSON report imports work only from a local file or http://localhost. GitHub Pages is public and must not be used for customer information.</p></div>`;
+      panel.innerHTML=`<section class="admin-step-page"><h2>Daily Excel report</h2>
+        <p class="admin-unmatched">Customer data is blocked on hosted websites. Run YardMap locally at http://localhost:8000 before importing the daily Excel file.</p></section>`;
       return;
     }
-    const report=adminReport(),summary=report?ADMIN().countMatch(report,project.objects):null;
-    panel.innerHTML=`<h2 class="panel-title">Admin Data</h2>
-      <p class="panel-description">Import the daily Excel export. YardMap joins it to the drawing by exact <b>LotNumber</b>, separately from the site-plan JSON.</p>
-      <div class="admin-offline-note"><strong>Local only</strong><span>No uploads, accounts, external connections or cloud sync. Data remains in this browser on this device.</span></div>
-      <div class="admin-file-actions">
-        <button type="button" class="btn btn-primary" data-action="adminExcel">Import daily Excel (.xlsx)</button>
-        <button type="button" class="btn btn-light" data-action="adminJsonImport">Import admin JSON</button>
-        <button type="button" class="btn btn-light" data-action="adminJsonExport" ${report?'':'disabled'}>Download admin JSON</button>
+    const report=adminReport();
+    const count=report?ADMIN().countMatch(report,project.objects):null;
+    const groups=report?collectionsListEntries().length:0;
+    panel.innerHTML=`<section class="admin-step-page">
+      <span class="admin-step-label">STEP 1 OF 3 · DAILY REPORT</span>
+      <h2>Import the daily sales spreadsheet</h2>
+      <p class="admin-step-intro">Choose the Excel file sent by the admin team. YardMap reads the report on this computer and builds a list of invoices and lots automatically. <strong>You do not need to draw anything on the map.</strong></p>
+      <div class="admin-upload-card">
+        <div class="admin-upload-icon" aria-hidden="true">XLSX</div>
+        <div><h3>${report?'Update today’s report':'Select the daily Excel report'}</h3>
+          <p>Use the original .xlsx file with its existing column headings. Importing a newer report keeps your collection notes and bookings.</p></div>
+        <button type="button" class="btn btn-primary admin-upload-action" data-action="adminExcel">${report?'Replace Excel report':'Choose Excel file (.xlsx)'}</button>
       </div>
-      ${report?`<div class="admin-report-card">
-          <strong>Report linked to this site</strong>
-          <p>Source: ${e(report.sourceName||'Admin report')}<br>
-          AuctionEventID: ${e(report.auctionEventId||'Not supplied')}<br>
-          Imported: ${e(new Date(report.importedAt).toLocaleString('en-GB'))}</p>
-          <div class="admin-stats">
-            <div><strong>${summary.reportRows}</strong><small>Report lots</small></div>
-            <div><strong>${summary.matched}</strong><small>Matched on plan</small></div>
-            <div><strong>${summary.unmatched}</strong><small>Unmatched on plan</small></div>
-            <div><strong>${summary.withoutInvoice}</strong><small>No invoice ID</small></div>
-          </div>
-          ${summary.duplicateLotKeys.length?`<p class="admin-unmatched">Warning: ${summary.duplicateLotKeys.length} duplicate LotNumber values in the report. They are not matched automatically.</p>`:''}
-        </div>`:'<div class="helper-card"><strong>No report imported yet</strong><p>The layout and existing lot records are unaffected until you import a local admin report. A new daily report replaces the previous one for this site only.</p></div>'}
-      <div class="admin-file-actions"><button type="button" class="btn btn-light" data-action="adminRemove" ${report?'':'disabled'}>Remove local admin report</button></div>
-      <div class="helper-card"><strong>Automatic field linking</strong><p>Matched lots display current invoice IDs and contact details in the original Details panel. Manual invoices are never silently overwritten; conflicts are flagged and can be switched to the daily report. Imported customer data stays out of structural site JSON unless you deliberately type a manual override. Exported CSV, PNG and PDF may display imported invoice IDs and must be handled as confidential. Replacing the daily report never changes your drawing.</p></div>`;
+      ${report?`<div class="admin-report-status" role="status">
+        <strong>✓ Spreadsheet loaded</strong>
+        <p><b>${e(report.sourceName||'Admin report')}</b> · ${e(report.auctionEventId||'Auction ID not supplied')}</p>
+        <p>${e(new Date(report.importedAt).toLocaleString('en-GB'))} · ${count.reportRows} Excel lots · ${groups} invoice/lot records</p>
+        ${count.duplicateLotKeys.length?`<p class="admin-unmatched">Warning: ${count.duplicateLotKeys.length} duplicate lot number(s) need checking before matching.</p>`:''}
+      </div>
+      <div class="admin-next-step">
+        <span>READY FOR STEP 2</span>
+        <strong>Find a buyer, open their invoice, then record their collection arrangements.</strong>
+        <button type="button" class="btn btn-primary" data-admin-next="collections">Go to invoice list</button>
+      </div>
+      <details class="admin-advanced">
+        <summary>Manage the loaded report</summary>
+        <p>Only the current spreadsheet is replaced when you import another one. Your drawings and existing collections records are retained.</p>
+        <button type="button" class="btn btn-light" data-action="adminRemove">Remove the local Excel report</button>
+      </details>`:
+      `<div class="admin-next-step admin-next-empty"><span>AFTER IMPORT</span><strong>You'll be guided to the invoice list to update bookings and notes.</strong></div>`}
+      <p class="admin-local-footnote">Private, local-only processing. The Excel file is never sent to GitHub, a server or cloud storage.</p>
+    </section>`;
   }
   async function importAdminFile(file,format){
     if(!file)return;
+    if(format!=='excel'){toast('Import the daily Excel spreadsheet (.xlsx) in Admin Mode.');return;}
     if(!localAdminAllowed()){toast('For safety, open YardMap on localhost to import admin data.');return;}
     if(adminReportsBlocked){toast('Admin storage needs recovery. Existing data is protected from overwrite.');return;}
     if(file.size>15*1024*1024){toast('Report exceeds the 15 MB file limit.');return;}
@@ -1477,13 +1538,15 @@
       const existing=adminReport();
       const mismatch=existing?.auctionEventId&&incoming.auctionEventId&&existing.auctionEventId!==incoming.auctionEventId;
       const warning=mismatch?'\nWARNING: AuctionEventID differs from the current site report.':'';
-      if(!window.confirm(`Import admin report to “${project.name}”?\n\nAuctionEventID: ${incoming.auctionEventId||'(unknown)'}\n${counts.reportRows} Excel rows · ${counts.matched} matching drawn lots · ${counts.unmatched} unmatched drawn lots.\n\nThis will replace the admin report for this site, but will not change any site-plan objects.${warning}`))return;
+      if(!window.confirm(`Load the daily Excel report for “${project.name}”?\n\nAuctionEventID: ${incoming.auctionEventId||'(unknown)'}\n${counts.reportRows} Excel lots · ${counts.matched} already drawn on the map.\n\nThe new report will replace the previous spreadsheet, but your drawings, collection bookings and notes remain saved on this device.${warning}`))return;
       const next=Object.assign(Object.create(null),adminReports);
       next[project.id]=incoming;
       if(!storeAdminReports(next))return;
       const migrated=migrateUnlinkedCollections();
-      refreshAll();
-      toast(`Admin report saved locally: ${counts.matched} drawn lots matched.${migrated?` ${migrated} earlier collection record(s) linked.`:''}`);
+      settings.collectionsSelectedKey=null;
+      switchTab('collections');
+      panel.scrollTop=0;
+      toast(`Excel report imported. ${counts.reportRows} lots ready to work through.${migrated?` ${migrated} existing collection record(s) linked.`:''}`);
     }catch(err){
       console.warn('Local admin import failed:',err?.message||'Unknown error');
       toast('Admin import failed: '+String(err?.message||err).slice(0,150));
@@ -1497,7 +1560,7 @@
   }
   function removeAdminData(){
     const report=adminReport();if(!report)return;
-    if(!window.confirm('Remove the imported admin report for this site from this browser? This cannot be undone without your original Excel or admin JSON file. The site plan will remain untouched.'))return;
+    if(!window.confirm('Remove the imported Excel report for this site from this browser? You will need the original Excel file to restore it. The map and collection notes remain untouched.'))return;
     const next=Object.assign(Object.create(null),adminReports);
     delete next[project.id];
     if(storeAdminReports(next)){refreshAll();toast('Local admin report removed. Site plan unchanged.');}
@@ -1506,8 +1569,11 @@
   function renderPanel(){
     if(settings.tab==='lots'){renderLotsPanel();return;}
     if(settings.tab==='access'){renderAccessPanel();return;}
-    if(settings.tab==='admin'){renderAdminPanel();return;}
-    if(settings.tab==='collections'){renderCollectionsPanel();return;}
+    if(settings.mode==='admin'){
+      if(settings.tab==='admin'){renderAdminPanel();return;}
+      if(settings.tab==='collections'||settings.tab==='schedule'){renderCollectionsPanel();return;}
+      renderAdminPanel();return;
+    }
     const o=getSelected();
     if(!o){
       panel.innerHTML=`<h2 class="panel-title">Site Settings</h2><p class="panel-description">Set up the site to match your building. All measurements and object positions use this grid.</p>
@@ -1686,12 +1752,8 @@
   async function handleAction(action){
     const o=getSelected();
     if(action==='adminExcel'){$('adminExcelFile').click();return;}
-    if(action==='adminJsonImport'){$('adminJsonFile').click();return;}
-    if(action==='adminJsonExport'){exportAdminJson();return;}
     if(action==='adminRemove'){removeAdminData();return;}
     if(action==='addCollectionNote'){addCollectionNote();return;}
-    if(action==='exportCollections'){exportCollectionsJson();return;}
-    if(action==='importCollections'){$('collectionsJsonFile').click();return;}
     if(action==='printCollectionSchedule'){openPrintPreview('schedule');return;}
     if(action==='addUndrawnLot'){
       if(!localAdminAllowed())return;
@@ -1857,14 +1919,14 @@
   function wireUI(){
     for(const btn of document.querySelectorAll('button[data-tool]'))btn.addEventListener('click',()=>setTool(btn.dataset.tool));
     for(const btn of document.querySelectorAll('[data-tab]'))btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
+    $('modeMapBtn').addEventListener('click',()=>switchMode('map'));
+    $('modeAdminBtn').addEventListener('click',()=>switchMode('admin'));
     $('projectSelect').addEventListener('change',event=>changeProject(event.target.value));
     $('renameBtn').addEventListener('click',renameSite);$('newBtn').addEventListener('click',newSite);
     $('exportBtn').addEventListener('click',exportJSON);
     $('importBtn').addEventListener('click',()=>$('importFile').click());
     $('importFile').addEventListener('change',event=>{importJSON(event.target.files[0]);event.target.value='';});
     $('adminExcelFile').addEventListener('change',event=>{importAdminFile(event.target.files[0],'excel');event.target.value='';});
-    $('adminJsonFile').addEventListener('change',event=>{importAdminFile(event.target.files[0],'json');event.target.value='';});
-    $('collectionsJsonFile').addEventListener('change',event=>{importCollectionsJson(event.target.files[0]);event.target.value='';});
     $('undoBtn').addEventListener('click',undo);$('redoBtn').addEventListener('click',redo);
     $('clearCanvasBackup').addEventListener('click',exportJSON);
     $('clearCanvasCancel').addEventListener('click',()=>$('clearCanvasDialog').close());
@@ -1933,6 +1995,15 @@
       if(event.target.matches('[data-field]'))liveEditKey=null;
     });
     panel.addEventListener('click',event=>{
+      const nextStep=event.target.closest('[data-admin-next]');
+      if(nextStep&&settings.mode==='admin'){
+        const dest=nextStep.dataset.adminNext;
+        if(dest==='admin'||dest==='collections'||dest==='schedule'){
+          if(dest==='collections')settings.collectionsSelectedKey=null;
+          switchTab(dest);panel.scrollTop=0;
+        }
+        return;
+      }
       const switcher=event.target.closest('[data-collections-view]');
       if(switcher){
         settings.collectionsView=switcher.dataset.collectionsView==='schedule'?'schedule':'list';
@@ -1970,6 +2041,14 @@
       const target=event.target;
       if(target instanceof HTMLElement && (target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;
       if($('confirmDialog').open||$('printDialog').open||$('clearCanvasDialog').open)return;
+      // Admin workspace has no drawing shortcuts. Ctrl+A must never
+      // accidentally activate Move All while staff work through invoices.
+      if(settings.mode==='admin'){
+        if(event.key==='Escape'&&settings.tab==='collections'&&settings.collectionsSelectedKey){
+          settings.collectionsSelectedKey=null;renderPanel();
+        }
+        return;
+      }
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='a'){
         event.preventDefault();setTool('move-all');return;
       }

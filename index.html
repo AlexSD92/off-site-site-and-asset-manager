@@ -15,12 +15,16 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app-shell mode-map" id="appShell">
     <header class="topbar">
       <div class="brand" aria-label="YardMap Auction Site Planner">
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
         <div><strong>YardMap</strong><small>AUCTION SITE PLANNER</small></div>
       </div>
+      <nav class="workspace-switch" role="group" aria-label="Choose workspace">
+        <button type="button" id="modeMapBtn" class="mode-switch active" aria-pressed="true" title="Draw and edit the site plan"><span class="mode-icon">▦</span> Map Mode</button>
+        <button type="button" id="modeAdminBtn" class="mode-switch" aria-pressed="false" title="Manage Excel reports and collections"><span class="mode-icon">☷</span> Admin Mode</button>
+      </nav>
       <div class="project-control">
         <label for="projectSelect">SITE</label>
         <select id="projectSelect" title="Switch locally saved sites"></select>
@@ -104,14 +108,24 @@
       </main>
 
       <aside class="details-sidebar" aria-label="Site information and editing">
-        <div class="panel-tabs" role="tablist" aria-label="Site information"><button class="panel-tab active" data-tab="properties" role="tab" aria-selected="true">Details</button><button class="panel-tab" data-tab="lots" role="tab" aria-selected="false">Lots <span id="lotsTabCount">0</span></button><button class="panel-tab" data-tab="access" role="tab" aria-selected="false">Access</button><button class="panel-tab" data-tab="admin" role="tab" aria-selected="false">Admin Data</button><button class="panel-tab" data-tab="collections" role="tab" aria-selected="false">Collections</button></div>
+        <div class="admin-workspace-heading">
+          <span class="admin-workspace-kicker">ADMIN WORKSPACE · LOCAL ONLY</span>
+          <h1>Manage collections</h1>
+          <p>Import the daily spreadsheet, find an invoice, update collection details and produce the schedule. No site drawing required.</p>
+        </div>
+        <div class="panel-tabs" role="tablist" aria-label="Workspace sections">
+          <button class="panel-tab active" data-mode-visibility="map" data-tab="properties" role="tab" aria-selected="true">Site Details</button>
+          <button class="panel-tab" data-mode-visibility="map" data-tab="lots" role="tab" aria-selected="false">Drawn Lots <span id="lotsTabCount">0</span></button>
+          <button class="panel-tab" data-mode-visibility="map" data-tab="access" role="tab" aria-selected="false">Access &amp; Keys</button>
+          <button class="panel-tab" data-mode-visibility="admin" data-tab="admin" role="tab" aria-selected="false"><span class="tab-step">1</span> Import Excel</button>
+          <button class="panel-tab" data-mode-visibility="admin" data-tab="collections" role="tab" aria-selected="false"><span class="tab-step">2</span> Work Through Invoices</button>
+          <button class="panel-tab" data-mode-visibility="admin" data-tab="schedule" role="tab" aria-selected="false"><span class="tab-step">3</span> Collection Schedule</button>
+        </div>
         <div id="panelContent" class="panel-content"></div>
       </aside>
     </div>
   </div>
   <input type="file" id="adminExcelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-  <input type="file" id="adminJsonFile" accept=".json,application/json" hidden>
-  <input type="file" id="collectionsJsonFile" accept=".json,application/json" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <dialog id="printDialog" class="print-dialog" aria-label="Site plan print preview">
   <div class="print-dialog-header">
