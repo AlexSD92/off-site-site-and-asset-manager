@@ -449,3 +449,13 @@
   .admin-collection-counts span{flex:1 1 45%}
   .admin-upload-card h3{font-size:15px}
 }
+
+/* Map details stay about drawing; one clear route to full admin editing. */
+.map-admin-link{margin:17px 0 12px;padding:15px;border:1px solid #c7dcef;background:#f0f7ff;border-radius:11px}
+.map-admin-link strong{display:block;color:#27517b;font-size:13px;font-weight:850;line-height:1.35}
+.map-admin-link p{color:#597390;font-size:12px;line-height:1.55;margin:7px 0 12px}
+.map-admin-link .btn{min-height:42px;white-space:normal;text-align:center}
+.map-linked-data{margin:2px 0 12px;padding:0 12px;border:1px solid #e0e9f3;border-radius:8px}
+.map-linked-data>summary{padding:12px 2px;color:#456782;cursor:pointer;font-size:12px;font-weight:800}
+.map-linked-data[open]>summary{margin-bottom:12px;border-bottom:1px solid #e4ecf5}
+.map-linked-data .linked-contact-fields{margin:8px 0 12px}

@@ -1614,7 +1614,10 @@
     const title={lot:`Lot ${o.number||'—'}`,box:`Area: ${o.label||'Untitled'}`,wall:'Wall',door:'Doorway',shutter:'Roller Shutter',lock:'Lock & Key',label:'Text Label'}[o.type];
     let html=`<h2 class="panel-title">${e(title)} <span style="font-size:10px;font-weight:600;color:#a2b0c0">· EDIT</span></h2><p class="panel-description">Changes save as you type, even when you click directly onto the site plan.</p>`;
     if(o.type==='lot'){
-      html+=field('Lot number','number',o.number)+invoiceEditorHtml(o)+linkedContactFields(o);
+      html+=field('Lot number','number',o.number)+invoiceEditorHtml(o);
+      if(reportForLot(o)?.row){
+        html+=`<details class="map-linked-data"><summary>Buyer contact from daily Excel</summary>${linkedContactFields(o)}</details>`;
+      }
       html+=field('Clearance status','status',optionsHtml(Object.entries(STATUS).map(([k,v])=>[k,v.label]),o.status),'select');
       html+=`<div class="field-grid">${field('Custom colour','color',o.color||STATUS[o.status].color,'color')}
         <div class="field"><label>Use status colour</label><button class="btn btn-light" data-action="resetColor" style="width:100%;min-height:40px">Reset colour</button></div></div>`;
@@ -1622,9 +1625,11 @@
       html+=`<div class="divider"></div><h3 class="panel-title">Footprint</h3>${fieldsXY(o,['x','y','w','h'])}`;
       html+=`<p class="field-help">Physical size: ${fmt(o.w*project.cellMeters)} × ${fmt(o.h*project.cellMeters)} metres.</p>`;
       html+=fontControlHtml(o);
-      html+=field('Notes / buyer / collection details','notes',o.notes,'textarea');
-      html+=collectionEditorHtml(o);
-      html+=adminInfoCard(o);
+      html+=field('Map / asset notes','notes',o.notes,'textarea');
+      html+=`<div class="map-admin-link"><strong>Buyer, collection booking and activity notes</strong>
+        <p>Manage the payment, recovery details, RAMS and timestamped collection notes in Admin Mode.</p>
+        <button class="btn btn-primary" type="button" data-action="openAdminForLot">Open collection record</button>
+      </div>`;
       html+=`<div class="panel-actions"><button class="btn btn-success" data-action="clearSelected">✓ ${o.status==='cleared'?'Reopen lot':'Green off lot'}</button><button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
     }else if(o.type==='box'){
       html+=field('Area / hazard label','label',o.label,'text','placeholder="e.g. Hazard, Obstruction, Keep Clear"');
@@ -1752,6 +1757,14 @@
   async function handleAction(action){
     const o=getSelected();
     if(action==='adminExcel'){$('adminExcelFile').click();return;}
+    if(action==='openAdminForLot'){
+      if(o?.type!=='lot')return;
+      settings.collectionsSelectedKey=collectionKeyForLot(o);
+      switchMode('admin');
+      switchTab('collections');
+      panel.scrollTop=0;
+      return;
+    }
     if(action==='adminRemove'){removeAdminData();return;}
     if(action==='addCollectionNote'){addCollectionNote();return;}
     if(action==='printCollectionSchedule'){openPrintPreview('schedule');return;}
