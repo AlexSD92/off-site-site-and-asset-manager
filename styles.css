@@ -459,3 +459,286 @@
 .map-linked-data>summary{padding:12px 2px;color:#456782;cursor:pointer;font-size:12px;font-weight:800}
 .map-linked-data[open]>summary{margin-bottom:12px;border-bottom:1px solid #e4ecf5}
 .map-linked-data .linked-contact-fields{margin:8px 0 12px}
+
+/* ───────────────────────────────────────────────────────────────
+   Accessibility, readable controls, scrollable admin and themes.
+   Map Mode intentionally retains its independent scrolling canvas.
+   Admin Mode instead uses the document's natural vertical scroll.
+   ─────────────────────────────────────────────────────────────── */
+.skip-link{
+ position:fixed;z-index:20000;top:12px;left:12px;transform:translateY(-160%);
+ background:#fff;color:#174e9f;border:3px solid #2977d5;border-radius:10px;
+ padding:13px 17px;font-size:15px;font-weight:850;box-shadow:0 10px 30px #061a2e44;
+}
+.skip-link:focus,.skip-link:focus-visible{transform:none}
+#mainContent:focus{outline:none}
+#panelContent:focus-visible{outline:3px solid #478eec;outline-offset:-3px}
+:where(button,input,select,textarea,summary,a,[role="button"],[role="tab"]):focus-visible{
+ outline:3px solid #317ce7!important;outline-offset:3px!important
+}
+:where(button,input,select,textarea,summary,a,[role="button"]){touch-action:manipulation}
+:where(input,select,textarea){max-width:100%}
+:where(.panel-content,.details-sidebar,.tool-sidebar,.print-stage){
+ scrollbar-width:auto;scrollbar-color:#8cabc9 transparent;
+}
+:where(.panel-content,.details-sidebar) :where(button,input,textarea,select,summary){
+ scroll-margin-block:20px;
+}
+.btn{min-height:42px}
+.tool{min-height:45px}
+.mini-btn{min-width:40px;height:40px}
+.mode-switch,.accessibility-toggle{min-height:44px}
+.mode-map .panel-tab{min-height:58px}
+.accessibility-controls{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.accessibility-toggle{
+ background:#243952;border:1px solid #455f7d;color:#e8f1ff;border-radius:9px;
+ padding:8px 12px;font-weight:750;font-size:12px;white-space:nowrap;
+}
+.accessibility-toggle:hover{background:#355172}
+.accessibility-toggle[aria-pressed="true"]{background:#e3f1ff;color:#15518c;border-color:#a0c7f3}
+@media(min-width:801px){
+ .mode-admin.app-shell{
+   height:auto!important;min-height:100dvh!important;max-height:none!important;
+   overflow:visible!important;
+ }
+ .mode-admin .main-layout{
+   flex:1 0 auto!important;min-height:0!important;max-height:none!important;
+   overflow:visible!important;
+ }
+ .mode-admin .details-sidebar{
+   display:block!important;height:auto!important;min-height:calc(100dvh - 185px);
+   max-height:none!important;overflow:visible!important;overscroll-behavior:auto;
+ }
+ .mode-admin .panel-content{
+   display:block!important;flex:none!important;height:auto!important;
+   max-height:none!important;overflow:visible!important;overscroll-behavior:auto;
+ }
+ .mode-admin .panel-tabs{position:sticky;top:0;z-index:6}
+}
+@media(max-width:800px){
+ .mode-admin.app-shell{height:auto!important;max-height:none!important;overflow:visible!important}
+ .mode-admin .main-layout,.mode-admin .details-sidebar,.mode-admin .panel-content{
+   height:auto!important;max-height:none!important;overflow:visible!important;
+ }
+ .accessibility-controls{order:4;flex:1 1 100%;width:100%;justify-content:center}
+ .accessibility-toggle{flex:1 1 50%;font-size:12px}
+ .panel-content{scroll-margin-top:12px}
+ .mode-admin .panel-tabs{position:sticky;top:0;z-index:6}
+}
+@media(max-width:480px){
+ .accessibility-toggle{font-size:11px;padding:9px 7px}
+ .mode-admin .panel-tab{min-height:64px}
+ .mode-admin .field-grid{grid-template-columns:1fr}
+ .mode-admin .admin-upload-card{grid-template-columns:1fr}
+ .admin-upload-icon{width:58px}
+}
+@media(prefers-reduced-motion:reduce){
+ html:focus-within{scroll-behavior:auto!important}
+ .skip-link{transition:none!important}
+}
+/* When users request higher contrast, keep focus and borders unambiguous. */
+@media(prefers-contrast:more){
+ :where(button,input,select,textarea,summary,a,[role="button"]):focus-visible{outline-width:4px!important}
+ .field input,.field select,.field textarea,.search-input,.collection-list-card,.panel-tab,.mode-switch{
+   border-width:2px!important;
+ }
+}
+@media(forced-colors:active){
+ .panel-tab.active,.mode-switch.active,.accessibility-toggle[aria-pressed="true"]{
+   outline:2px solid Highlight!important;outline-offset:-2px;
+ }
+ .skip-link{forced-color-adjust:auto}
+}
+/* Global interface text magnification (independent of map annotation scale). */
+.larger-text :where(.tool,.btn,.accessibility-toggle,.mode-switch,.panel-tab){font-size:15px!important}
+.larger-text :where(.field label,.collection-editor .field label,.collections-search-label){font-size:14px!important}
+.larger-text :where(.field input,.field textarea,.field select,.search-input,.collection-manual-add input){font-size:16px!important}
+.larger-text :where(.panel-description,.field-help,.collection-check,.collection-list-card small,.schedule-foot,.admin-step-intro,.admin-upload-card p,.admin-next-inline span){font-size:14px!important;line-height:1.6}
+.larger-text :where(.collection-list-card strong,.collection-editor header h3,.schedule-item-head strong){font-size:18px!important}
+.larger-text :where(.collection-list-card span,.schedule-item-info b,.collection-note p,.collection-disclosure>summary){font-size:15px!important}
+.larger-text .admin-step-page h2{font-size:27px}
+.larger-text .mode-admin .panel-tab{font-size:16px!important;min-height:70px}
+.larger-text .mode-map .panel-tab{font-size:14px!important}
+.larger-text .mode-admin .collection-check{font-size:15px!important}
+.larger-text .mode-admin .collection-editor .field input{font-size:16px!important}
+.larger-text .mode-admin .collection-editor .field textarea{font-size:16px!important}
+.larger-text .mode-admin .schedule-item-info span{font-size:13px!important}
+.larger-text .mode-admin .schedule-item-info b{font-size:15px!important}
+.larger-text .mode-admin .schedule-day>h3{font-size:20px!important}
+.larger-text .admin-workspace-heading p{font-size:15px!important}
+.larger-text .main-layout{min-width:0}
+.larger-text .mode-map .canvas-actions{flex-wrap:wrap}
+@media(max-width:800px){
+ .larger-text .mode-admin .panel-tab{font-size:12px!important}
+ .larger-text .mode-admin .panel-tab .tab-step{font-size:12px!important}
+}
+/* Dark palette: do not invert the drawing canvas or white print sheets.
+   Explicit text/background overrides are needed for the legacy colours. */
+.theme-dark{
+ --navy:#0a1626;--slate:#a2b8d0;--line:#33475e;
+ --blue:#7eafff;--green:#45c992;--red:#fa8d9b;
+ color:#e2ebf7;background:#101b2b;
+}
+.theme-dark body,.theme-dark .app-shell{background:#101b2b;color:#dce8f8}
+.theme-dark .topbar{background:#0b1624;color:#edf5ff}
+.theme-dark .brand small,.theme-dark .save-state{color:#acbfd8}
+.theme-dark .project-control{border-color:#3b4c65}
+.theme-dark .project-control label{color:#a9bdd8}
+.theme-dark .project-control select,.theme-dark .btn-subtle{background:#22364e;color:#f0f6ff;border-color:#405875}
+.theme-dark .workspace-switch{background:#1b2d44;border-color:#47607e}
+.theme-dark .mode-switch{color:#bed0e7}
+.theme-dark .mode-switch:hover,.theme-dark .accessibility-toggle:hover{background:#344e6e;color:#fff}
+.theme-dark .mode-switch.active,.theme-dark .accessibility-toggle[aria-pressed="true"]{background:#345c8a;color:#fff;border-color:#7daef0}
+.theme-dark .accessibility-toggle{background:#20344c;color:#e1edfd;border-color:#496482}
+.theme-dark .summary-strip,.theme-dark .tool-sidebar,.theme-dark .details-sidebar,
+.theme-dark .canvas-toolbar,.theme-dark .canvas-footer,.theme-dark .panel-tabs,
+.theme-dark .panel-tab{background:#182739;color:#d9e6f7;border-color:#344a62}
+.theme-dark .summary-item{border-color:#33475d}
+.theme-dark .summary-item small{color:#acc0d6}
+.theme-dark .summary-item strong{color:#f4f8ff}
+.theme-dark .progress-track{background:#33475d}
+.theme-dark .main-layout{background:#111e2f}
+.theme-dark .mode-admin .main-layout{background:#111e2f!important}
+.theme-dark .mode-admin .details-sidebar{background:#182739;border-color:#3b4e66;box-shadow:0 9px 30px #030a1455}
+.theme-dark .mode-admin .admin-workspace-heading{background:#21344b;border-color:#3e536b}
+.theme-dark .admin-workspace-heading h1,.theme-dark .admin-workspace-heading p,
+.theme-dark .admin-workspace-kicker{color:#e1ecfb}
+.theme-dark .admin-workspace-kicker,.theme-dark .admin-step-label{color:#98c4ff}
+.theme-dark .mode-admin .panel-tabs{background:#182739}
+.theme-dark .mode-admin .panel-tab{background:#25374b;color:#c3d4e8;border-color:#3b546c}
+.theme-dark .mode-admin .panel-tab.active,.theme-dark .panel-tab.active{
+ background:#24486c;color:#cde5ff;border-color:#6694c5
+}
+.theme-dark .mode-admin .panel-tab .tab-step{background:#354f70;color:#e1efff}
+.theme-dark .mode-admin .panel-tab.active .tab-step{background:#538fe3;color:#08182b}
+.theme-dark .panel-title,.theme-dark .admin-step-page h2,.theme-dark .section-heading,
+.theme-dark .tool-group-title,.theme-dark .canvas-title strong,.theme-dark .canvas-title #siteDimensions{color:#e5effe}
+.theme-dark .panel-description,.theme-dark .admin-step-intro,.theme-dark .field-help,
+.theme-dark .admin-workspace-heading p{color:#b6c8df}
+.theme-dark .save-banner,.theme-dark .mode-admin .save-banner{
+ background:#16372e;color:#bff4db;border-color:#2c6753
+}
+.theme-dark .save-banner strong,.theme-dark .save-banner span,.theme-dark .mode-admin .save-banner span{color:#bff4db}
+.theme-dark .save-banner[data-state="saving"]{background:#263f5b;color:#d3e4ff}
+.theme-dark .save-banner[data-state="error"]{background:#5a2d39;color:#ffe0dd}
+.theme-dark .tool{color:#c0d0e5}
+.theme-dark .tool:hover{background:#2b405a}
+.theme-dark .tool.active{background:#294e7d;color:#ddedff;border-color:#4779b9}
+.theme-dark .tool-green.active{background:#214e41;color:#b9ffdc;border-color:#2c785d}
+.theme-dark .tool-delete.active{background:#532b37;color:#ffd5d8;border-color:#804452}
+.theme-dark .tool kbd{background:#26394d;color:#b6cee8;border-color:#465b73}
+.theme-dark .tool-hint,.theme-dark .helper-card,.theme-dark .group-move-panel,
+.theme-dark .admin-import-prompt{background:#23384d;border-color:#3b536b;color:#dceaf8}
+.theme-dark .tool-hint p,.theme-dark .tool-hint b,.theme-dark .helper-card p,
+.theme-dark .group-move-panel p,.theme-dark .admin-import-prompt p{color:#b9cde4}
+.theme-dark .tool-hint strong,.theme-dark .helper-card strong,.theme-dark .group-move-panel strong,
+.theme-dark .admin-import-prompt strong{color:#e2efff}
+.theme-dark .canvas-wrap{background:#263447;border-color:#3d4e64}
+.theme-dark .canvas-footer{color:#b4c7de}
+.theme-dark .mini-btn,.theme-dark .btn-light,.theme-dark .font-controls button{
+ background:#283d52;color:#e1edfc;border-color:#436078
+}
+.theme-dark .mini-btn:hover,.theme-dark .btn-light:hover,.theme-dark .font-controls button:hover{
+ background:#345471;color:#fff
+}
+.theme-dark .btn-primary{background:#2b70c7;border-color:#3985e1;color:#fff}
+.theme-dark .btn-primary:hover{background:#3b85e0}
+.theme-dark .btn-success{background:#194d3c;color:#b7f8d9;border-color:#357b5d}
+.theme-dark .panel-tab span:not(.tab-step){background:#344c64;color:#dce9fc}
+.theme-dark .divider{background:#344a5f}
+.theme-dark .field label,.theme-dark .collections-search-label{color:#c4d6ea}
+.theme-dark .field input,.theme-dark .field select,.theme-dark .field textarea,
+.theme-dark .search-input,.theme-dark .collection-manual-add input,
+.theme-dark .text-scale-ctrl input,.theme-dark input:not([type=checkbox]):not([type=radio]):not([type=color]),
+.theme-dark textarea,.theme-dark select{
+ background:#1a2c40;color:#eff6ff;border-color:#466179
+}
+.theme-dark :where(input,textarea)::placeholder{color:#a1b3c8;opacity:1}
+.theme-dark .field input:focus,.theme-dark .field textarea:focus,.theme-dark .field select:focus,
+.theme-dark .search-input:focus{background:#213a52;border-color:#84b5ef;outline-color:#375a86}
+.theme-dark .field input[readonly],.theme-dark .linked-contact-fields input[readonly]{
+ background:#263e55;color:#dcecfb;border-color:#45617b
+}
+.theme-dark .linked-contact-fields,.theme-dark .collection-editor,.theme-dark .admin-upload-card,
+.theme-dark .admin-report-card,.theme-dark .admin-report-status,.theme-dark .admin-next-step,
+.theme-dark .collection-manual-add,.theme-dark .collection-buyer-info,.theme-dark .admin-collection-counts span,
+.theme-dark .schedule-summary-count,.theme-dark .admin-next-empty,.theme-dark .map-admin-link,
+.theme-dark .map-linked-data{
+ background:#203449;border-color:#44617d;color:#dceafd
+}
+.theme-dark .admin-upload-icon{background:#2b4967;border-color:#6e9ed0;color:#e6f5ff}
+.theme-dark .admin-upload-card h3,.theme-dark .admin-upload-card p,
+.theme-dark .admin-next-step>strong,.theme-dark .admin-next-step>span,
+.theme-dark .admin-report-status>strong,.theme-dark .admin-report-status p,
+.theme-dark .admin-report-card strong,.theme-dark .admin-report-card p,
+.theme-dark .collection-buyer-info strong,.theme-dark .collection-buyer-info span,
+.theme-dark .admin-collection-counts b,.theme-dark .admin-collection-counts span,
+.theme-dark .schedule-summary-count strong,.theme-dark .schedule-summary-count span,
+.theme-dark .map-admin-link strong,.theme-dark .map-admin-link p{color:#d3e5f9}
+.theme-dark .admin-advanced,.theme-dark .collection-disclosure,.theme-dark .collection-check,
+.theme-dark .collection-list-card,.theme-dark .schedule-item,.theme-dark .collection-list-editor,
+.theme-dark .box-register-item,.theme-dark .list-item-card,.theme-dark .collection-manual-more{
+ background:#23384d;color:#e1efff;border-color:#456079
+}
+.theme-dark .admin-advanced>summary,.theme-dark .collection-disclosure>summary,
+.theme-dark .collection-note time,.theme-dark .older-collection-notes>summary,
+.theme-dark .collection-list-card strong,.theme-dark .collection-list-card span,
+.theme-dark .collection-list-card small,.theme-dark .collection-report-lot strong,
+.theme-dark .collection-report-lot span,.theme-dark .schedule-item-head strong,
+.theme-dark .schedule-item-lots,.theme-dark .schedule-item-head b,
+.theme-dark .schedule-item-info b,.theme-dark .schedule-item-info span,
+.theme-dark .schedule-foot,.theme-dark .collection-note p,
+.theme-dark .collection-check,.theme-dark .collection-editor header h3,
+.theme-dark .collection-editor header small,.theme-dark .map-linked-data>summary{
+ color:#d2e4f9
+}
+.theme-dark .collection-list-card:hover,.theme-dark .collection-list-card:focus-visible{
+ background:#2b4967;border-color:#83b5ef
+}
+.theme-dark .collection-check:has(input:checked){background:#21493f;border-color:#4d9977;color:#c6f6de}
+.theme-dark .collection-check input{accent-color:#5ccf95}
+.theme-dark .collections-view-switch{background:#1a2c40;border-color:#456077}
+.theme-dark .collections-view-switch button{color:#bcd2eb}
+.theme-dark .collections-view-switch button.active{background:#2c5079;color:#fff}
+.theme-dark .collection-note,.theme-dark .collection-report-lot,
+.theme-dark .schedule-item .schedule-foot,.theme-dark .admin-advanced[open]>summary,
+.theme-dark .collection-disclosure[open]>summary{border-color:#3c546a}
+.theme-dark .schedule-day>h3{color:#d4e8ff;border-color:#5789b9}
+.theme-dark .schedule-day>h3 span{color:#b8cde3}
+.theme-dark .admin-local-footnote,.theme-dark .admin-advanced p,
+.theme-dark .admin-next-inline span,.theme-dark .collection-manual-add label,
+.theme-dark .invoice-link-state span,.theme-dark .text-scale-ctrl{color:#b6cce3}
+.theme-dark .invoice-link-state{background:#25405a;border-color:#75a4d5}
+.theme-dark .invoice-link-state.conflict{background:#483823;border-color:#d3a65f}
+.theme-dark .invoice-link-state.conflict span{color:#ffe1b7}
+.theme-dark .invoice-link-state.linked{background:#1e4639;border-color:#46b98b}
+.theme-dark .invoice-link-state.linked span{color:#baf5d6}
+.theme-dark .print-dialog{background:#16283a;color:#e3efff}
+.theme-dark .print-dialog-header,.theme-dark .print-dialog-footer,.theme-dark .print-controls{background:#1d3045;color:#dceafd;border-color:#405a75}
+.theme-dark .print-dialog-header small,.theme-dark .print-dialog-footer span{color:#c4d5ea}
+.theme-dark .print-stage{background:#172536}
+.theme-dark .print-page,.theme-dark .print-directory,.theme-dark .print-schedule{color:#203951;background:#fff}
+.theme-dark .print-page *,.theme-dark .print-directory *,.theme-dark .print-schedule *{color:inherit}
+.theme-dark .print-contact-table th{background:#eaf2fa;color:#254f75}
+.theme-dark .print-contact-table td{border-color:#dce6f1}
+.theme-dark .print-directory .directory-head h2,.theme-dark .print-schedule .directory-head h2{color:#244b72}
+.theme-dark .print-directory .directory-head p,.theme-dark .print-schedule .directory-head p{color:#60758b}
+.theme-dark .print-directory .schedule-item,.theme-dark .print-schedule .schedule-item{
+ background:#fff;color:#233c57;border-color:#dce6ef
+}
+.theme-dark .print-directory .schedule-item *,.theme-dark .print-schedule .schedule-item *{color:#263e56}
+.theme-dark .clear-canvas-dialog,.theme-dark .confirm-dialog{
+ background:#1e3043;color:#eaf2ff;border-color:#456078
+}
+.theme-dark .clear-canvas-content,.theme-dark .confirm-dialog form{background:#1e3043;color:#eaf2ff}
+.theme-dark .clear-canvas-warning{background:#4a3035;color:#ffe4de;border-color:#80545a}
+.theme-dark .clear-canvas-verify{background:#233d54;border-color:#48627a;color:#e9f5ff}
+.theme-dark .clear-canvas-verify label,.theme-dark .clear-canvas-dialog h3,
+.theme-dark .confirm-dialog h3,.theme-dark .confirm-dialog p{color:#e6effe}
+.theme-dark .toast{background:#263c53;color:#fff;border-color:#54718c}
+.theme-dark :where(button,input,select,textarea,summary,a,[role="button"],[role="tab"]):focus-visible{
+ outline-color:#9ac8ff!important
+}
+@media print{
+ .theme-dark,.theme-dark body,.theme-dark .app-shell{color:#111!important;background:#fff!important}
+}

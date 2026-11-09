@@ -15,6 +15,7 @@
   <script src="app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Skip to main workspace</a>
   <div class="app-shell mode-map" id="appShell">
     <header class="topbar">
       <div class="brand" aria-label="YardMap Auction Site Planner">
@@ -25,6 +26,10 @@
         <button type="button" id="modeMapBtn" class="mode-switch active" aria-pressed="true" title="Draw and edit the site plan"><span class="mode-icon">▦</span> Map Mode</button>
         <button type="button" id="modeAdminBtn" class="mode-switch" aria-pressed="false" title="Manage Excel reports and collections"><span class="mode-icon">☷</span> Admin Mode</button>
       </nav>
+      <div class="accessibility-controls" role="group" aria-label="Display and accessibility preferences">
+        <button id="themeToggleBtn" type="button" class="accessibility-toggle" aria-pressed="false" title="Switch between light and dark mode">☾ Dark mode</button>
+        <button id="uiTextToggleBtn" type="button" class="accessibility-toggle" aria-pressed="false" title="Make the app's menus and text larger">A+ Larger text</button>
+      </div>
       <div class="project-control">
         <label for="projectSelect">SITE</label>
         <select id="projectSelect" title="Switch locally saved sites"></select>
@@ -53,7 +58,7 @@
       <span id="saveBannerHint">Changes stay on this device. Export JSON to keep a backup.</span>
     </div>
 
-    <div class="main-layout">
+    <div class="main-layout" id="mainContent" tabindex="-1">
       <aside class="tool-sidebar" aria-label="Drawing tools">
         <div class="section-heading">DRAW & EDIT <span>TOOLS</span></div>
         <div class="tool-group">
@@ -121,7 +126,7 @@
           <button class="panel-tab" data-mode-visibility="admin" data-tab="collections" role="tab" aria-selected="false"><span class="tab-step">2</span> Work Through Invoices</button>
           <button class="panel-tab" data-mode-visibility="admin" data-tab="schedule" role="tab" aria-selected="false"><span class="tab-step">3</span> Collection Schedule</button>
         </div>
-        <div id="panelContent" class="panel-content"></div>
+        <div id="panelContent" class="panel-content" role="tabpanel" aria-label="Workspace content" tabindex="-1"></div>
       </aside>
     </div>
   </div>

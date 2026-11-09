@@ -6,6 +6,7 @@
   const STORE_KEY = 'yardmap.projects.v1';
   const ADMIN_STORE_KEY = 'yardmap.adminReports.v1';
   const COLLECTION_STORE_KEY = 'yardmap.collections.v1';
+  const UI_PREFS_KEY = 'yardmap.ui.v1';
   const EXPORT_SIGNATURE = 'yardmap-site';
   const CELL_PX = 30;
   const MAX_UNDO = 80;
@@ -47,6 +48,53 @@
     lotFilter:'all', lotSearch:'', selected:null, panFromSpace:false,
     collectionsView:'list', collectionsSelectedKey:null, collectionsSearch:'' };
   const view = {zoom:1, offsetX:0, offsetY:0, width:900, height:580, fitted:false};
+  let uiPrefs={theme:'system',largerText:false};
+  function applyUiPreferences(){
+    const systemDark=typeof window.matchMedia==='function' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const dark=uiPrefs.theme==='dark'||(uiPrefs.theme==='system'&&systemDark);
+    document.documentElement.classList.toggle('theme-dark',dark);
+    document.documentElement.classList.toggle('larger-text',uiPrefs.largerText===true);
+    document.documentElement.style.colorScheme=dark?'dark':'light';
+    const themeBtn=$('themeToggleBtn');
+    const textBtn=$('uiTextToggleBtn');
+    themeBtn.textContent=dark?'☀ Light mode':'☾ Dark mode';
+    themeBtn.setAttribute('aria-pressed',String(dark));
+    themeBtn.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+    textBtn.textContent=uiPrefs.largerText?'A− Standard text':'A+ Larger text';
+    textBtn.setAttribute('aria-pressed',String(uiPrefs.largerText===true));
+    textBtn.setAttribute('aria-label',uiPrefs.largerText?'Use standard-sized interface text':'Use larger interface text');
+  }
+  function loadUiPreferences(){
+    try{
+      const value=JSON.parse(localStorage.getItem(UI_PREFS_KEY)||'null');
+      if(value&&typeof value==='object'){
+        if(['dark','light','system'].includes(value.theme))uiPrefs.theme=value.theme;
+        if(typeof value.largerText==='boolean')uiPrefs.largerText=value.largerText;
+      }
+    }catch(err){
+      console.warn('Display preferences could not be read. Using defaults.',err);
+    }
+    applyUiPreferences();
+  }
+  function saveUiPreferences(){
+    try{
+      localStorage.setItem(UI_PREFS_KEY,JSON.stringify(uiPrefs));
+    }catch(err){
+      console.warn('Display preferences could not be saved in this browser.',err);
+      toast('Display preference changed for this session only.');
+    }
+  }
+  function toggleDarkMode(){
+    const currentlyDark=document.documentElement.classList.contains('theme-dark');
+    uiPrefs.theme=currentlyDark?'light':'dark';
+    applyUiPreferences();saveUiPreferences();
+  }
+  function toggleLargerText(){
+    uiPrefs.largerText=!uiPrefs.largerText;
+    applyUiPreferences();saveUiPreferences();
+    if(settings.mode==='map')requestAnimationFrame(resizeCanvas);
+  }
   const pointers = new Map();
   let drawing = null;
   let pinch = null;
@@ -807,7 +855,12 @@
       const active=b.dataset.tab===tab;
       b.classList.toggle('active',active);
       b.setAttribute('aria-selected',String(active));
+      b.tabIndex=active?0:-1;
     }
+    panel.setAttribute('aria-label',({
+      properties:'Site details',lots:'Drawn lot register',access:'Keys and access',
+      admin:'Daily Excel import',collections:'Invoice and collection records',schedule:'Collection schedule'
+    })[tab]);
     renderPanel();
   }
   function switchMode(mode){
@@ -826,6 +879,7 @@
       ? 'Changes stay in this browser. Use Import / Export Site JSON above for a map backup.'
       : 'Collection records and daily Excel stay on this device. Keep the original Excel report securely.';
     panel.scrollTop=0;
+    if(typeof window.scrollTo==='function')window.scrollTo(0,0);
     if(mode==='admin'){
       if(settings.tool!=='select')setTool('select');
       switchTab(settings.lastAdminTab||'admin');
@@ -1930,6 +1984,31 @@
  requestAnimationFrame(()=>window.print());
 }
   function wireUI(){
+    $('themeToggleBtn').addEventListener('click',toggleDarkMode);
+    $('uiTextToggleBtn').addEventListener('click',toggleLargerText);
+    if(typeof window.matchMedia==='function'){
+      const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+      systemTheme.addEventListener?.('change',()=>{
+        if(uiPrefs.theme==='system')applyUiPreferences();
+      });
+    }
+    document.querySelector('.panel-tabs')?.addEventListener('keydown',event=>{
+      if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;
+      if(!event.target.matches('[data-tab]'))return;
+      const tabs=[...document.querySelectorAll('[data-tab]')].filter(tab=>
+        tab.dataset.modeVisibility===settings.mode);
+      if(!tabs.length)return;
+      const pos=tabs.indexOf(event.target);
+      if(pos<0)return;
+      event.preventDefault();
+      let next=pos;
+      if(event.key==='ArrowRight')next=(pos+1)%tabs.length;
+      else if(event.key==='ArrowLeft')next=(pos-1+tabs.length)%tabs.length;
+      else if(event.key==='Home')next=0;
+      else if(event.key==='End')next=tabs.length-1;
+      switchTab(tabs[next].dataset.tab);
+      tabs[next].focus();
+    });
     for(const btn of document.querySelectorAll('button[data-tool]'))btn.addEventListener('click',()=>setTool(btn.dataset.tool));
     for(const btn of document.querySelectorAll('[data-tab]'))btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
     $('modeMapBtn').addEventListener('click',()=>switchMode('map'));
@@ -2093,6 +2172,7 @@
       requestAnimationFrame(()=>{resizeQueued=false;resizeCanvas();});
     }).observe(wrap);
   }
-  load();loadAdminReports();loadCollections();wireUI();refreshProjectSelector();refreshStats();renderPanel();setTool('select');
+  loadUiPreferences();
+  load();loadAdminReports();loadCollections();wireUI();refreshProjectSelector();refreshStats();switchTab('properties');setTool('select');
   requestAnimationFrame(()=>{resizeCanvas();fitView();});
 })();
