@@ -43,7 +43,8 @@
   const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const safeName = s => String(s || 'site').replace(/[^a-z0-9 _-]/gi, '_').trim().replace(/\s+/g,'-').slice(0,70) || 'site';
   const fmt = n => Number(n.toFixed(2)).toString();
-  const settings = { tab:'properties', tool:'select', lotFilter:'all', lotSearch:'', selected:null, panFromSpace:false };
+  const settings = { tab:'properties', tool:'select', lotFilter:'all', lotSearch:'', selected:null, panFromSpace:false,
+    collectionsView:'list', collectionsSelectedKey:null, collectionsSearch:'' };
   const view = {zoom:1, offsetX:0, offsetY:0, width:900, height:580, fitted:false};
   const pointers = new Map();
   let drawing = null;
@@ -138,7 +139,14 @@
     }
   }
   function collectionKeyForLot(lot){
-    return COLLECTION().keyFor(lot,effectiveInvoiceFor(lot));
+    const invoice=effectiveInvoiceFor(lot);
+    if(invoice)return COLLECTION().keyFor(lot,invoice);
+    const num=ADMIN().lotKey(lot.number);
+    // Without an invoice, a uniquely matched spreadsheet lot (or a list-
+    // created record) shares its collection record with a drawn lot.
+    if(num&&(reportForLot(lot)?.row||currentCollections()['reportlot:'+num]))
+      return 'reportlot:'+num;
+    return COLLECTION().keyFor(lot,'');
   }
   function currentCollections(){
     return localAdminAllowed()?collectionsBySite[project.id]||Object.create(null):Object.create(null);
@@ -152,20 +160,34 @@
   function migrateUnlinkedCollections(){
     if(!localAdminAllowed()||collectionsBlocked)return 0;
     const current=currentCollections(),candidates=new Map();
+    const offer=(from,to)=>{
+      if(from===to||!current[from]||current[to])return;
+      if(!candidates.has(to))candidates.set(to,new Set());
+      candidates.get(to).add(from);
+    };
     for(const lot of project.objects.filter(o=>o.type==='lot')){
-      const from='lot:'+lot.id,to=collectionKeyForLot(lot);
-      if(from===to||!current[from]||current[to])continue;
-      if(!candidates.has(to))candidates.set(to,[]);
-      candidates.get(to).push(from);
+      offer('lot:'+lot.id,collectionKeyForLot(lot));
     }
-    // Only migrate when the invoice has exactly one unlinked source.
-    // Ambiguous older records remain untouched, never silently merged.
+    const report=adminReport();
+    if(report){
+      const index=ADMIN().indexReport(report);
+      for(const row of report.rows){
+        const number=ADMIN().lotKey(row.LotNumber);
+        const invoice=ADMIN().invoiceKey(row['dbo.RWX_Invoices::Id']);
+        if(number&&invoice&&!index.duplicates.has(number))
+          offer('reportlot:'+number,'inv:'+invoice);
+      }
+    }
+    // Keep ambiguous or conflicting legacy records intact; never merge notes
+    // automatically or overwrite another invoice's collection history.
     const records=Object.assign(Object.create(null),current);
     let moved=0;
     for(const [to,sources] of candidates){
-      if(sources.length!==1)continue;
-      records[to]=COLLECTION().cleanRecord(records[sources[0]]);
-      delete records[sources[0]];
+      if(sources.size!==1||records[to])continue;
+      const from=[...sources][0];
+      if(!records[from])continue;
+      records[to]=COLLECTION().cleanRecord(records[from]);
+      delete records[from];
       moved++;
     }
     if(!moved)return 0;
@@ -181,20 +203,25 @@
     all[project.id]=records;
     return storeCollections(all);
   }
-  function updateCollectionField(input){
+  function activeCollectionKey(){
+    if(settings.tab==='collections')return settings.collectionsSelectedKey;
     const lot=getSelected();
-    if(lot?.type!=='lot')return false;
+    return lot?.type==='lot'?collectionKeyForLot(lot):null;
+  }
+  function updateCollectionField(input){
+    const recordKey=activeCollectionKey();
+    if(!recordKey)return false;
     const key=input.dataset.collectionField;
     if(![...COLLECTION().BOOL_FIELDS,...COLLECTION().TEXT_FIELDS,'bookingDate','bookingTime'].includes(key))return false;
     let value=input.value;
     if(COLLECTION().BOOL_FIELDS.includes(key))value=Boolean(input.checked);
     else if(key==='bookingDate'&&!COLLECTION().validDate(value))value='';
     else if(key==='bookingTime'&&!COLLECTION().validTime(value))value='';
-    return updateCollectionForKey(collectionKeyForLot(lot),{[key]:value});
+    return updateCollectionForKey(recordKey,{[key]:value});
   }
   function addCollectionNote(){
-    const lot=getSelected();if(lot?.type!=='lot')return;
-    const key=collectionKeyForLot(lot),rec=collectionForLot(lot);
+    const key=activeCollectionKey();if(!key)return;
+    const rec=COLLECTION().cleanRecord(currentCollections()[key]);
     const message=rec.draft.trim();
     if(!message){toast('Type a note before adding it to the log.');return;}
     const note={id:nextId(),at:new Date().toISOString(),text:message};
@@ -210,7 +237,7 @@
     const index=report?ADMIN().indexReport(report):null;
     return COLLECTION().scheduleEntries(currentCollections(),project.objects,
       lot=>effectiveInvoiceFor(lot),lot=>reportForLot(lot)?.row||null,
-      v=>ADMIN().lotKey(v),index?.byInvoice||null);
+      v=>ADMIN().lotKey(v),index?.byInvoice||null,report?.rows||[]);
   }
   function exportCollectionsJson(){
     if(!localAdminAllowed())return;
@@ -240,9 +267,13 @@
   }
   function collectionEditorHtml(lot){
     if(!localAdminAllowed())return '';
-    const invoice=effectiveInvoiceFor(lot),key=collectionKeyForLot(lot),record=collectionForLot(lot);
+    const invoice=effectiveInvoiceFor(lot),key=collectionKeyForLot(lot);
     const siblings=project.objects.filter(o=>o.type==='lot'&&collectionKeyForLot(o)===key);
     const context=invoice?`Invoice ${e(invoice)} · shared across ${siblings.length} drawn lot(s)`:'Not yet invoiced · linked to this lot';
+    return collectionEditorForKey(key,context);
+  }
+  function collectionEditorForKey(key,context){
+    const record=COLLECTION().cleanRecord(currentCollections()[key]);
     const notes=[...record.notes].reverse();
     const noteHtml=n=>`<div class="collection-note"><time datetime="${e(n.at)}">${e(new Date(n.at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}))}</time><p>${e(n.text)}</p></div>`;
     return `<section class="collection-editor">
@@ -292,7 +323,8 @@
         <div><span>Recovery email</span><b>${e(r.recoveryEmail||'Not supplied')}</b></div>
       </div>
       <div class="schedule-foot">Payment contacted: ${r.contactedForPayment?'Yes':'No'} · RAMS: ${r.ramsChecked?'Checked':'Not checked'} · Notes: ${r.notes.length}</div>
-      ${first?`<button type="button" class="btn btn-light schedule-edit" data-select="${e(first)}">Open lot details</button>`:''}
+      <button type="button" class="btn btn-light schedule-edit" data-collection-select="${e(item.key)}">Edit collection / notes</button>
+      ${first?`<button type="button" class="btn btn-light schedule-edit" data-select="${e(first)}">View on site plan</button>`:''}
     </article>`;
   }
   function scheduleHTML(){
@@ -306,21 +338,110 @@
       `<section class="schedule-day"><h3>${e(COLLECTION().formatDate(date))}<span>${bookings.length} appointment(s)</span></h3>
        ${bookings.map(scheduleEntryHTML).join('')}</section>`).join('');
   }
+  function collectionsListEntries(){
+    return COLLECTION().listEntries(adminReport()?.rows||[],project.objects,
+      lot=>effectiveInvoiceFor(lot),v=>ADMIN().lotKey(v),currentCollections());
+  }
+  function collectionListCard(item){
+    const rec=COLLECTION().cleanRecord(currentCollections()[item.key]);
+    const buyer=ADMIN().asText(item.row?.['dbo.RWX_Invoices::Full Billing Name']);
+    const title=item.invoice?'Invoice '+item.invoice:
+      item.key.startsWith('reportlot:')?'Uninvoiced lot '+(item.lots[0]||item.key.slice(10)):
+      item.lots.length?'Uninvoiced lot '+item.lots[0]:'Previous lot record';
+    const status=rec.bookedIn&&rec.bookingDate?
+      'Booked '+rec.bookingDate+' '+(rec.bookingTime||'TBC'):
+      rec.bookedIn?'Booked · date needed':rec.contactedForPayment?'Payment contacted':'Not booked';
+    return `<button type="button" class="collection-list-card" data-collection-select="${e(item.key)}">
+      <strong>${e(title)}</strong>
+      <span>${e(buyer||'No buyer name in report')}</span>
+      <small>Lots: ${e(item.lots.join(', ')||'Not linked to current report')}</small>
+      <small>${e(status)} · ${rec.notes.length} note(s) ${rec.ramsChecked?'· RAMS checked':''}</small>
+    </button>`;
+  }
+  function selectedCollectionHtml(item){
+    const rows=adminReport()?.rows||[];
+    const row=item.row||null;
+    const buyer=ADMIN().asText(row?.['dbo.RWX_Invoices::Full Billing Name']);
+    const mobile=ADMIN().asText(row?.['mobile::StringNativeValue']);
+    const telephone=ADMIN().asText(row?.['tel::StringNativeValue']);
+    const email=ADMIN().asText(row?.['dbo.RWX_Users 2::UserName']);
+    const title=item.invoice?'Invoice '+item.invoice:
+      item.lots.length?'Uninvoiced lot '+item.lots.join(', '):'Previous collection record';
+    const descriptionRows=rows.filter(r=>{
+      const inv=ADMIN().invoiceKey(r['dbo.RWX_Invoices::Id']);
+      return item.invoice?inv===item.invoice:
+        item.lots.some(n=>ADMIN().lotKey(r.LotNumber)===ADMIN().lotKey(n))&&!inv;
+    }).slice(0,100);
+    const lotDetails=descriptionRows.length?descriptionRows.map(r=>
+      `<div class="collection-report-lot"><strong>Lot ${e(r.LotNumber)}</strong><span>${e(ADMIN().asText(r['dbo.RWX_Listings::Title'])||'No description supplied')}</span></div>`
+    ).join(''):'<p class="field-help">These lots are not in the current daily spreadsheet. Existing collection records remain available.</p>';
+    return `<div class="collection-list-editor">
+      <button type="button" class="btn btn-light" data-collection-back>← Back to invoice / lot list</button>
+      <h2 class="panel-title">${e(title)}</h2>
+      <p class="panel-description">${e(item.lots.length?item.lots.length+' associated lot(s): '+item.lots.join(', '):'Saved collection record without a current report match')}</p>
+      <div class="collection-buyer-info">
+        <strong>${e(buyer||'Buyer not supplied')}</strong>
+        ${mobile||telephone?`<span>Buyer contact: ${e([mobile,telephone].filter(Boolean).join(' / '))}</span>`:''}
+        ${email?`<span>Username: ${e(email)}</span>`:''}
+      </div>
+      ${collectionEditorForKey(item.key,item.invoice?
+         `Invoice ${e(item.invoice)} · works without drawing the lots`:
+         'Lot-based collection record · no invoice required')}
+      <details class="collection-disclosure collection-lot-details"><summary>Lots and descriptions (${item.lots.length})</summary>
+        <div class="collection-lot-roster">${lotDetails}</div>
+      </details>
+    </div>`;
+  }
   function renderCollectionsPanel(){
     if(!localAdminAllowed()){
-      panel.innerHTML='<h2 class="panel-title">Collections · Offline only</h2><p class="admin-unmatched">For customer privacy, collection records are only available from localhost or a local file.</p>';return;
+      panel.innerHTML='<h2 class="panel-title">Collections · Offline only</h2><p class="admin-unmatched">For customer privacy, collection records are only available from localhost or a local file.</p>';
+      return;
     }
-    const records=currentCollections();
-    panel.innerHTML=`<h2 class="panel-title">Collection Schedule</h2>
-      <p class="panel-description">One booking per invoice, with every related lot. Dates are ordered chronologically and appointments within each day are sorted by time.</p>
-      <div class="collection-schedule-actions">
-        <button type="button" class="btn btn-primary" data-action="printCollectionSchedule" ${collectionSchedule().length?'':'disabled'}>Print schedule / PDF</button>
-        <button type="button" class="btn btn-light" data-action="exportCollections">Export collections JSON</button>
-        <button type="button" class="btn btn-light" data-action="importCollections">Import collections JSON</button>
+    const entries=collectionsListEntries();
+    const booked=collectionSchedule();
+    const mode=settings.collectionsView==='schedule'?'schedule':'list';
+    const controls=`<div class="collections-view-switch" role="group" aria-label="Collections view">
+      <button type="button" data-collections-view="list" class="${mode==='list'?'active':''}" aria-pressed="${mode==='list'}">Lot / Invoice List</button>
+      <button type="button" data-collections-view="schedule" class="${mode==='schedule'?'active':''}" aria-pressed="${mode==='schedule'}">Schedule (${booked.length})</button>
+    </div>
+    <div class="collection-schedule-actions">
+      <button type="button" class="btn btn-primary" data-action="printCollectionSchedule" ${booked.length?'':'disabled'}>Print schedule / PDF</button>
+      <button type="button" class="btn btn-light" data-action="exportCollections">Export collections JSON</button>
+      <button type="button" class="btn btn-light" data-action="importCollections">Import collections JSON</button>
+    </div>`;
+    if(mode==='schedule'){
+      panel.innerHTML=`<h2 class="panel-title">Collection Schedule</h2>
+        <p class="panel-description">Appointments organised by date and time, including invoices that have never been drawn on the plan.</p>
+        ${controls}${scheduleHTML()}`;
+      return;
+    }
+    const selected=entries.find(x=>x.key===settings.collectionsSelectedKey);
+    if(selected){
+      panel.innerHTML=controls+selectedCollectionHtml(selected);
+      return;
+    }
+    const query=settings.collectionsSearch.trim().toLowerCase();
+    const visible=entries.filter(item=>{
+      const row=item.row||{};
+      return [item.invoice,item.key,item.lots.join(' '),row['dbo.RWX_Invoices::Full Billing Name'],
+        row['mobile::StringNativeValue'],row['dbo.RWX_Users 2::UserName']].join(' ').toLowerCase().includes(query);
+    });
+    panel.innerHTML=`<h2 class="panel-title">Collections List</h2>
+      <p class="panel-description">All ${entries.length} invoice / lot group(s), including those imported from Excel without a site drawing. Open any record to book, add notes or update the checklist.</p>
+      ${controls}
+      ${collectionsBlocked?'<p class="admin-unmatched">Saved collection records need recovery. The existing data cannot be overwritten.</p>':''}
+      <label class="collections-search-label" for="collectionsSearch">Search invoices, lots or buyers</label>
+      <input type="search" id="collectionsSearch" class="search-input" placeholder="Invoice, lot number or buyer…" value="${e(settings.collectionsSearch)}">
+      <div id="collectionsListResults" class="collections-list-results">
+        ${visible.length?visible.map(collectionListCard).join(''):
+          '<p class="empty-list">No matching records. Import the daily Excel file under Admin Data, or create a temporary lot record below.</p>'}
       </div>
-      <p class="field-help">Confidential: collection records are saved separately from the site plan and daily spreadsheet. Export their own JSON backup.</p>
-      ${collectionsBlocked?'<p class="admin-unmatched">Stored collection records need recovery; no overwriting is permitted.</p>':''}
-      ${scheduleHTML()}`;
+      <div class="collection-manual-add">
+        <label for="collectionsNewLot">Need to log a lot before it appears in Excel?</label>
+        <div><input id="collectionsNewLot" type="text" maxlength="90" placeholder="Lot number, e.g. 124">
+          <button type="button" class="btn btn-light" data-action="addUndrawnLot">Add lot</button></div>
+      </div>
+      <p class="field-help">Bookings, recovery contacts and timestamped notes are saved separately on this device. A map drawing is optional.</p>`;
   }
   function reportForLot(lot){
     const report=adminReport();
@@ -504,7 +625,7 @@
   function getSelected(){return project.objects.find(o=>o.id===settings.selected)||null;}
   function changeProject(id){
     const target=state.projects.find(p=>p.id===id);if(!target)return;
-    storeNow();project=target;state.activeId=id;settings.selected=null;history=[];future=[];
+    storeNow();project=target;state.activeId=id;settings.selected=null;settings.collectionsSelectedKey=null;history=[];future=[];
     if(settings.tool==='move-all')setTool('select');
     refreshProjectSelector();refreshAll();fitView();storeNow();toast(`Opened ${project.name}`);
   }
@@ -512,7 +633,7 @@
     const name=prompt('Name this auction site:',`New auction site ${state.projects.length+1}`);
     if(name===null)return;
     project=createProject(name.trim().slice(0,140)||`New auction site ${state.projects.length+1}`);
-    state.projects.push(project);state.activeId=project.id;history=[];future=[];settings.selected=null;
+    state.projects.push(project);state.activeId=project.id;history=[];future=[];settings.selected=null;settings.collectionsSelectedKey=null;
     if(settings.tool==='move-all')setTool('select');
     refreshProjectSelector();refreshAll();fitView();storeNow();toast('New site created');
   }
@@ -577,7 +698,7 @@
     const index=state.projects.findIndex(p=>p.id===project.id);state.projects.splice(index,1);
     if(!state.projects.length)state.projects.push(createProject('My auction site'));
     project=state.projects[Math.min(index,state.projects.length-1)];state.activeId=project.id;
-    history=[];future=[];settings.selected=null;refreshProjectSelector();refreshAll();fitView();storeNow();toast('Site deleted from this browser');
+    history=[];future=[];settings.selected=null;settings.collectionsSelectedKey=null;refreshProjectSelector();refreshAll();fitView();storeNow();toast('Site deleted from this browser');
   }
   function downloadBlob(blob,filename){
     const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;
@@ -1572,6 +1693,20 @@
     if(action==='exportCollections'){exportCollectionsJson();return;}
     if(action==='importCollections'){$('collectionsJsonFile').click();return;}
     if(action==='printCollectionSchedule'){openPrintPreview('schedule');return;}
+    if(action==='addUndrawnLot'){
+      if(!localAdminAllowed())return;
+      const input=panel.querySelector('#collectionsNewLot');
+      const value=ADMIN().lotKey(input?.value||'');
+      if(!value||value.length>90){toast('Enter a valid lot number (up to 90 characters).');return;}
+      const existing=collectionsListEntries().find(item=>item.lots.some(n=>ADMIN().lotKey(n)===value));
+      const key=existing?.key||'reportlot:'+value;
+      if(!existing&&!updateCollectionForKey(key,{}))return;
+      settings.collectionsSelectedKey=key;
+      settings.collectionsView='list';
+      renderPanel();panel.scrollTop=0;
+      toast(existing?'Opened the existing lot record.':'New undrawn lot record saved locally.');
+      return;
+    }
     if(action==='followAdminInvoice'){
       if(o?.type!=='lot'||!importedInvoiceFor(o))return;
       const before=snapshot();o.invoice='';commit(before);
@@ -1776,6 +1911,21 @@
     });
     panel.addEventListener('input',event=>{
       if(event.target.id==='lotSearch'){settings.lotSearch=event.target.value;renderLotList();return;}
+      if(event.target.id==='collectionsSearch'){
+        settings.collectionsSearch=event.target.value;
+        const target=$('collectionsListResults');
+        if(target){
+          const query=settings.collectionsSearch.trim().toLowerCase();
+          const visible=collectionsListEntries().filter(item=>{
+            const row=item.row||{};
+            return [item.invoice,item.key,item.lots.join(' '),row['dbo.RWX_Invoices::Full Billing Name'],
+              row['mobile::StringNativeValue'],row['dbo.RWX_Users 2::UserName']].join(' ').toLowerCase().includes(query);
+          });
+          target.innerHTML=visible.length?visible.map(collectionListCard).join(''):
+            '<p class="empty-list">No matching invoice or lot records.</p>';
+        }
+        return;
+      }
       if(event.target.matches('[data-collection-field]')){updateCollectionField(event.target);return;}
       if(event.target.matches('[data-field]'))updateField(event.target,true);
     });
@@ -1783,6 +1933,22 @@
       if(event.target.matches('[data-field]'))liveEditKey=null;
     });
     panel.addEventListener('click',event=>{
+      const switcher=event.target.closest('[data-collections-view]');
+      if(switcher){
+        settings.collectionsView=switcher.dataset.collectionsView==='schedule'?'schedule':'list';
+        renderPanel();panel.scrollTop=0;return;
+      }
+      if(event.target.closest('[data-collection-back]')){
+        settings.collectionsSelectedKey=null;
+        renderPanel();panel.scrollTop=0;return;
+      }
+      const collection=event.target.closest('[data-collection-select]');
+      if(collection){
+        settings.collectionsSelectedKey=collection.dataset.collectionSelect;
+        settings.collectionsView='list';
+        switchTab('collections');
+        panel.scrollTop=0;return;
+      }
       const clear=event.target.closest('[data-clear]');
       if(clear){event.stopPropagation();
         const lot=project.objects.find(o=>o.id===clear.dataset.clear&&o.type==='lot');

@@ -270,3 +270,34 @@
   .schedule-item-info b{font-size:9pt}
   .schedule-edit{display:none!important}
 }
+
+/* Collections list works even when no site-plan objects have been drawn. */
+.collections-view-switch{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:4px;background:#edf2f8;border:1px solid #d8e3ef;border-radius:10px;margin:0 0 14px}
+.collections-view-switch button{border:0;border-radius:7px;background:transparent;color:#59718a;padding:10px 5px;font-size:11px;font-weight:800;cursor:pointer;line-height:1.3;min-width:0}
+.collections-view-switch button.active{background:#fff;color:#2267ba;box-shadow:0 1px 7px #102b4621}
+.collections-search-label{display:block;font-size:11px;font-weight:800;color:#49617b;margin:15px 0 6px}
+.collections-list-results{display:flex;flex-direction:column;gap:7px;margin:10px 0 18px}
+.collection-list-card{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;border:1px solid #dbe5ef;background:#fff;border-radius:9px;padding:12px;color:#31495f;cursor:pointer;transition:border-color .1s,background .1s}
+.collection-list-card:hover,.collection-list-card:focus-visible{background:#eef6ff;border-color:#76a9df;outline-offset:1px}
+.collection-list-card strong{font-size:12px;font-weight:850;color:#235b95;overflow-wrap:anywhere}
+.collection-list-card span{font-size:11px;font-weight:750;overflow-wrap:anywhere}
+.collection-list-card small{font-size:10px;line-height:1.4;color:#70849a;overflow-wrap:anywhere}
+.collection-manual-add{background:#f6f9fd;border:1px solid #e0e8f1;border-radius:9px;padding:11px;margin:12px 0 19px}
+.collection-manual-add>label{display:block;font-size:11px;font-weight:750;color:#536b84;margin-bottom:8px}
+.collection-manual-add>div{display:flex;gap:6px}
+.collection-manual-add input{min-width:0;flex:1;width:60%;border:1px solid #ccd9e6;border-radius:7px;padding:9px 8px;font-size:12px;color:#253f5c;background:#fff}
+.collection-manual-add .btn{flex:0 0 auto;padding:7px 10px}
+.collection-list-editor>button:first-child{margin:8px 0 17px;width:100%;font-size:11px}
+.collection-list-editor>.panel-title{font-size:15px;color:#264d75;overflow-wrap:anywhere}
+.collection-buyer-info{display:flex;flex-direction:column;gap:6px;background:#eef5fb;border:1px solid #d3e3f2;border-radius:9px;padding:12px;margin:9px 0}
+.collection-buyer-info strong{font-size:13px;color:#264963;overflow-wrap:anywhere}
+.collection-buyer-info span{font-size:11px;color:#4a6783;overflow-wrap:anywhere}
+.collection-list-editor>.collection-editor{margin-top:12px}
+.collection-lot-roster{display:flex;flex-direction:column;gap:0;margin-bottom:10px}
+.collection-report-lot{display:flex;flex-direction:column;gap:4px;padding:9px 0;border-bottom:1px solid #edf1f6}
+.collection-report-lot:last-child{border:0}
+.collection-report-lot strong{font-size:11px;color:#235c9d}
+.collection-report-lot span{font-size:11px;color:#435b73;line-height:1.4;overflow-wrap:anywhere}
+@media print{
+  .collections-view-switch,.collection-list-editor>button:first-child,.collection-manual-add{display:none!important}
+}
