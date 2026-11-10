@@ -59,7 +59,7 @@
     </div>
 
     <div class="main-layout" id="mainContent" tabindex="-1">
-      <aside class="tool-sidebar" aria-label="Drawing tools">
+      <aside class="tool-sidebar" id="mapToolSidebar" aria-label="Drawing tools">
         <div class="section-heading">DRAW & EDIT <span>TOOLS</span></div>
         <div class="tool-group">
           <button class="tool active" data-tool="select" title="Select and move (V)" aria-pressed="true"><span class="tool-symbol"><svg viewBox="0 0 24 24"><path d="m5 3 14 9-7 1-3 7Z"/></svg></span><span>Select / Move</span><kbd>V</kbd></button>
@@ -88,6 +88,11 @@
         <div class="canvas-toolbar">
           <div class="canvas-title"><span class="canvas-live"></span><strong id="canvasTitle">Site Layout</strong><span id="siteDimensions">48 × 32 m</span></div>
           <div class="canvas-actions">
+            <div class="map-layout-buttons" role="group" aria-label="Show or hide map panels">
+              <button class="mini-btn map-layout-toggle" id="toggleToolsBtn" type="button" aria-controls="mapToolSidebar" aria-expanded="true" title="Show or hide drawing tools">☰ Tools</button>
+              <button class="mini-btn map-layout-toggle" id="toggleDetailsBtn" type="button" aria-controls="mapDetailsSidebar" aria-expanded="true" title="Show or hide lot details">▣ Details</button>
+              <button class="mini-btn map-layout-toggle" id="focusMapBtn" type="button" aria-pressed="false" title="Maximise map area by hiding both sidebars">⛶ Focus</button>
+            </div>
             <button class="mini-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
             <button class="mini-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
             <span class="toolbar-separator"></span>
@@ -109,6 +114,8 @@
           <div class="canvas-note" id="canvasNote">Select a tool to get started</div>
           <div class="map-highlight-notice" id="mapHighlightNotice" role="status" aria-live="polite" hidden>
             <span id="mapHighlightText">Highlighted lots</span>
+            <button type="button" id="mapHighlightPreviewBtn" class="map-highlight-action" aria-label="Preview highlighted schematic">Preview</button>
+            <button type="button" id="mapHighlightDownloadBtn" class="map-highlight-action" aria-label="Download highlighted schematic PNG">Download PNG</button>
             <button type="button" id="mapHighlightDismiss" aria-label="Dismiss highlighted lots">×</button>
           </div>
           <div class="mobile-canvas-controls"><button id="mobilePan" title="Toggle pan mode">Pan</button><button id="mobileGreen" title="Toggle green-off mode">✓ Clear</button><button id="mobileDelete" title="Tap an item to delete (undo available)">⌫ Delete</button></div>
@@ -116,7 +123,7 @@
         <div class="canvas-footer"><span><span class="footer-key">●</span> Autosave · this browser only</span><span id="activeToolHelp">Select & move items</span></div>
       </main>
 
-      <aside class="details-sidebar" aria-label="Site information and editing">
+      <aside class="details-sidebar" id="mapDetailsSidebar" aria-label="Site information and editing">
         <div class="admin-workspace-heading">
           <span class="admin-workspace-kicker">ADMIN WORKSPACE · LOCAL ONLY</span>
           <h1>Manage collections</h1>
@@ -136,7 +143,28 @@
   </div>
   <input type="file" id="adminExcelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <dialog id="printDialog" class="print-dialog" aria-label="Site plan print preview">
+  <dialog id="highlightPreviewDialog" class="highlight-preview-dialog" aria-labelledby="highlightPreviewTitle" aria-describedby="highlightPreviewHelp">
+  <header class="highlight-preview-header">
+    <div>
+      <h2 id="highlightPreviewTitle">Highlighted site plan</h2>
+      <p id="highlightPreviewHelp">Preview the highlighted lots without leaving the collections schedule. Close to return to your work.</p>
+    </div>
+    <button id="highlightPreviewCloseBtn" type="button" class="highlight-preview-close" aria-label="Close highlighted site plan preview">✕</button>
+  </header>
+  <div class="highlight-preview-stage">
+    <img id="highlightPreviewImage" alt="Site schematic with the invoice's lots outlined in gold">
+  </div>
+  <footer class="highlight-preview-footer">
+    <span>Local preview · highlighted PNG may contain invoice information</span>
+    <div class="highlight-preview-actions">
+      <button id="highlightPreviewDownloadBtn" type="button" class="btn btn-primary">Download highlighted PNG</button>
+      <button id="highlightPreviewShowMapBtn" type="button" class="btn btn-light">Open in Map Mode</button>
+      <button id="highlightPreviewDoneBtn" type="button" class="btn btn-light">Close preview</button>
+    </div>
+  </footer>
+</dialog>
+
+<dialog id="printDialog" class="print-dialog" aria-label="Site plan print preview">
   <div class="print-dialog-header">
     <div><strong>Print preview</strong><small>Print the full site plan or choose Save as PDF.</small></div>
     <button id="printCloseBtn" class="print-close" type="button" aria-label="Close print preview">✕</button>

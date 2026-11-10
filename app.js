@@ -49,7 +49,47 @@
     collectionsView:'list', collectionsSelectedKey:null, collectionsSearch:'',
     collectionsSort:'lotAsc',lotSort:'numberAsc' };
   const view = {zoom:1, offsetX:0, offsetY:0, width:900, height:580, fitted:false};
-  let uiPrefs={theme:'system',largerText:false};
+  let uiPrefs={theme:'system',largerText:false,mapToolsCollapsed:false,mapDetailsCollapsed:false};
+  let mapFocusRestore=null;
+  function applyMapPanelState(){
+    const shell=$('appShell');
+    shell.classList.toggle('map-tools-collapsed',uiPrefs.mapToolsCollapsed===true);
+    shell.classList.toggle('map-details-collapsed',uiPrefs.mapDetailsCollapsed===true);
+    const tools=$('toggleToolsBtn'),details=$('toggleDetailsBtn'),focus=$('focusMapBtn');
+    const toolsShown=!uiPrefs.mapToolsCollapsed,detailsShown=!uiPrefs.mapDetailsCollapsed;
+    tools.textContent=toolsShown?'☰ Hide tools':'☰ Show tools';
+    tools.setAttribute('aria-expanded',String(toolsShown));
+    tools.setAttribute('aria-label',toolsShown?'Hide drawing tools':'Show drawing tools');
+    details.textContent=detailsShown?'▣ Hide details':'▣ Show details';
+    details.setAttribute('aria-expanded',String(detailsShown));
+    details.setAttribute('aria-label',detailsShown?'Hide map details':'Show map details');
+    const focused=!toolsShown&&!detailsShown;
+    focus.textContent=focused?'⛶ Restore panels':'⛶ Focus map';
+    focus.setAttribute('aria-pressed',String(focused));
+    focus.setAttribute('aria-label',focused?'Restore map panels':'Hide both map sidebars to maximise the canvas');
+    if(settings.mode==='map')requestAnimationFrame(resizeCanvas);
+  }
+  function toggleMapPanel(which){
+    const key=which==='tools'?'mapToolsCollapsed':'mapDetailsCollapsed';
+    uiPrefs[key]=!uiPrefs[key];
+    mapFocusRestore=null;
+    applyMapPanelState();
+    saveUiPreferences();
+  }
+  function toggleMapFocus(){
+    const focused=uiPrefs.mapToolsCollapsed&&uiPrefs.mapDetailsCollapsed;
+    if(focused){
+      uiPrefs.mapToolsCollapsed=mapFocusRestore?.mapToolsCollapsed??false;
+      uiPrefs.mapDetailsCollapsed=mapFocusRestore?.mapDetailsCollapsed??false;
+      mapFocusRestore=null;
+    }else{
+      mapFocusRestore={mapToolsCollapsed:uiPrefs.mapToolsCollapsed,mapDetailsCollapsed:uiPrefs.mapDetailsCollapsed};
+      uiPrefs.mapToolsCollapsed=true;
+      uiPrefs.mapDetailsCollapsed=true;
+    }
+    applyMapPanelState();
+    saveUiPreferences();
+  }
   function applyUiPreferences(){
     const systemDark=typeof window.matchMedia==='function' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -72,11 +112,14 @@
       if(value&&typeof value==='object'){
         if(['dark','light','system'].includes(value.theme))uiPrefs.theme=value.theme;
         if(typeof value.largerText==='boolean')uiPrefs.largerText=value.largerText;
+        if(typeof value.mapToolsCollapsed==='boolean')uiPrefs.mapToolsCollapsed=value.mapToolsCollapsed;
+        if(typeof value.mapDetailsCollapsed==='boolean')uiPrefs.mapDetailsCollapsed=value.mapDetailsCollapsed;
       }
     }catch(err){
       console.warn('Display preferences could not be read. Using defaults.',err);
     }
     applyUiPreferences();
+    applyMapPanelState();
   }
   function saveUiPreferences(){
     try{
@@ -116,6 +159,8 @@
   let printView='site';
   let highlightedMapLots=[];
   let highlightedMapLabel='';
+  let highlightedMapKey=null;
+  let highlightPreviewTarget=null;
   let highlightTimer=null;
   const ADMIN=()=>window.YardMapReport;
   const localAdminAllowed=()=>{
@@ -1264,9 +1309,9 @@
     c.strokeRect(b.minX-.15,b.minY-.15,b.maxX-b.minX+.3,b.maxY-b.minY+.3);
     c.restore();
   }
-  function paintTemporaryLotHighlights(c,px){
-    if(!highlightedMapLots.length)return;
-    const ids=new Set(highlightedMapLots);
+  function paintTemporaryLotHighlights(c,px,lotIds=highlightedMapLots){
+    if(!lotIds.length)return;
+    const ids=new Set(lotIds);
     c.save();
     c.strokeStyle='#e9a400';
     c.lineWidth=5/px;
@@ -1287,19 +1332,26 @@
     if(highlightTimer!==null){clearTimeout(highlightTimer);highlightTimer=null;}
     highlightedMapLots=[];
     highlightedMapLabel='';
+    highlightedMapKey=null;
     const banner=$('mapHighlightNotice');
     if(banner)banner.hidden=true;
     drawSoon();
   }
+  function collectionMapIds(key){
+    if(!localAdminAllowed())return [];
+    const item=collectionsListEntries().find(entry=>entry.key===key);
+    if(!item)return [];
+    return [...new Set(item.drawnIds||[])].filter(id=>
+      project.objects.some(o=>o.type==='lot'&&o.id===id));
+  }
   function highlightCollectionOnMap(key){
-    // Only mapped lots corresponding to the requested imported invoice are
-    // highlighted. Highlight state is ephemeral and NEVER stored in site JSON.
-    let item=collectionsListEntries().find(entry=>entry.key===key);
-    let ids=item?.drawnIds||collectionSchedule().find(entry=>entry.key===key)?.lotIds||[];
-    ids=[...new Set(ids)].filter(id=>project.objects.some(o=>o.type==='lot'&&o.id===id));
+    // Only mapped lots from the current imported report are highlighted.
+    // This is ephemeral UI state and NEVER written into the site JSON.
+    const ids=collectionMapIds(key);
     if(!ids.length){toast('No drawn lots for this invoice. The schedule record remains available.');return false;}
     dismissMapHighlights();
     highlightedMapLots=ids;
+    highlightedMapKey=key;
     highlightedMapLabel=key.startsWith('inv:')?'Invoice '+key.slice(4):'Selected lot';
     settings.selected=null;
     switchMode('map');
@@ -1382,6 +1434,11 @@
         c.setLineDash([]);c.restore();
       }
     }
+    // Explicit export opt-in only: ordinary site PNGs and print plans do not
+    // automatically inherit the temporary highlighted invoice.
+    if(options.export&&Array.isArray(options.highlightIds)&&options.highlightIds.length){
+      paintTemporaryLotHighlights(c,px,options.highlightIds);
+    }
     c.restore();
     c.strokeStyle='#acbdcf';c.lineWidth=Math.max(1,1/px);
     c.strokeRect(0,0,project.cols,project.rows);
@@ -1410,6 +1467,76 @@
     c.font='14px system-ui,sans-serif';c.textAlign='right';
     c.fillText(`1 square = ${fmt(project.cellMeters)} m`,width-padding,32);
     copy.toBlob(blob=>{if(blob){downloadBlob(blob,`${safeName(project.name)}-plan.png`);toast('Site plan exported as PNG');}},'image/png');
+  }
+
+  function buildHighlightedPlanCanvas(target,maxSize=2600){
+    if(!target||target.projectId!==project.id)throw Error('The selected site has changed.');
+    const ids=target.ids.filter(id=>project.objects.some(o=>o.type==='lot'&&o.id===id));
+    if(!ids.length)throw Error('No matching lots are drawn on this site.');
+    const padding=72;
+    const px=Math.max(3,Math.min(48,(maxSize-padding*2)/Math.max(project.cols,project.rows)));
+    const width=Math.round(project.cols*px+padding*2);
+    const height=Math.round(project.rows*px+padding*2);
+    const out=document.createElement('canvas');
+    out.width=width;out.height=height;
+    const context=out.getContext('2d');
+    if(!context)throw Error('Cannot create the highlighted map image in this browser.');
+    paint(context,width,height,padding,padding,px,{export:true,grid:true,
+      showText:true,highlightIds:ids});
+    context.textAlign='left';context.fillStyle='#1f354e';
+    context.font='bold 21px system-ui,sans-serif';
+    context.fillText(project.name.slice(0,75),padding,30,Math.max(150,width-padding*2));
+    context.font='bold 15px system-ui,sans-serif';
+    context.fillStyle='#775000';
+    context.fillText(`HIGHLIGHTED · ${target.label}`,padding,53,Math.max(150,width-padding*2));
+    context.font='12px system-ui,sans-serif';context.fillStyle='#425871';
+    context.fillText(`${ids.length} highlighted lot${ids.length===1?'':'s'} · 1 square = ${fmt(project.cellMeters)} m · Created locally`,
+      padding,height-22,Math.max(150,width-padding*2));
+    return out;
+  }
+  function highlightedTargetForKey(key){
+    const ids=collectionMapIds(key);
+    if(!ids.length)return null;
+    return {projectId:project.id,key,ids,
+      label:key.startsWith('inv:')?'Invoice '+key.slice(4):'Lot collection'};
+  }
+  function openHighlightedPlanPreview(key){
+    const target=highlightedTargetForKey(key);
+    if(!target){toast('No mapped lots available for this invoice.');return false;}
+    const dialog=$('highlightPreviewDialog');
+    highlightPreviewTarget=target;
+    try{
+      const rendered=buildHighlightedPlanCanvas(target,1600);
+      $('highlightPreviewImage').src=rendered.toDataURL('image/png');
+      $('highlightPreviewTitle').textContent=target.label+' · highlighted site plan';
+      dialog.showModal();
+    }catch(err){
+      highlightPreviewTarget=null;
+      toast('Unable to preview the highlighted plan: '+String(err?.message||err));
+      return false;
+    }
+    return true;
+  }
+  function closeHighlightedPlanPreview(){
+    const dialog=$('highlightPreviewDialog');
+    if(dialog.open)dialog.close();
+  }
+  function downloadHighlightedPlan(target){
+    if(!target){toast('Open a highlighted invoice preview first.');return false;}
+    try{
+      const canvas=buildHighlightedPlanCanvas(target,2800);
+      const filename=`${safeName(project.name)}-${safeName(target.label)}-highlighted.png`;
+      canvas.toBlob(blob=>{
+        if(blob){
+          downloadBlob(blob,filename);
+          toast('Highlighted PNG downloaded locally. Treat invoice details as confidential.');
+        }else toast('Unable to save the highlighted image on this device.');
+      },'image/png');
+      return true;
+    }catch(err){
+      toast('Unable to export the highlighted map: '+String(err?.message||err));
+      return false;
+    }
   }
 
   function closestLineDistance(p,o){
@@ -2175,7 +2302,26 @@
 }
   function wireUI(){
     $('themeToggleBtn').addEventListener('click',toggleDarkMode);
+    $('toggleToolsBtn').addEventListener('click',()=>toggleMapPanel('tools'));
+    $('toggleDetailsBtn').addEventListener('click',()=>toggleMapPanel('details'));
+    $('focusMapBtn').addEventListener('click',toggleMapFocus);
     $('mapHighlightDismiss').addEventListener('click',dismissMapHighlights);
+    $('mapHighlightPreviewBtn').addEventListener('click',()=>openHighlightedPlanPreview(highlightedMapKey));
+    $('mapHighlightDownloadBtn').addEventListener('click',()=>{
+      if(highlightedMapKey)downloadHighlightedPlan(highlightedTargetForKey(highlightedMapKey));
+    });
+    $('highlightPreviewCloseBtn').addEventListener('click',closeHighlightedPlanPreview);
+    $('highlightPreviewDoneBtn').addEventListener('click',closeHighlightedPlanPreview);
+    $('highlightPreviewDownloadBtn').addEventListener('click',()=>downloadHighlightedPlan(highlightPreviewTarget));
+    $('highlightPreviewShowMapBtn').addEventListener('click',()=>{
+      const key=highlightPreviewTarget?.key;
+      closeHighlightedPlanPreview();
+      if(key)highlightCollectionOnMap(key);
+    });
+    $('highlightPreviewDialog').addEventListener('close',()=>{
+      $('highlightPreviewImage').removeAttribute('src');
+      highlightPreviewTarget=null;
+    });
     $('uiTextToggleBtn').addEventListener('click',toggleLargerText);
     if(typeof window.matchMedia==='function'){
       const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
@@ -2282,7 +2428,7 @@
     });
     panel.addEventListener('click',event=>{
       const viewMap=event.target.closest('[data-view-collection-map]');
-      if(viewMap){highlightCollectionOnMap(viewMap.dataset.viewCollectionMap);return;}
+      if(viewMap){openHighlightedPlanPreview(viewMap.dataset.viewCollectionMap);return;}
       const nextStep=event.target.closest('[data-admin-next]');
       if(nextStep&&settings.mode==='admin'){
         const dest=nextStep.dataset.adminNext;
