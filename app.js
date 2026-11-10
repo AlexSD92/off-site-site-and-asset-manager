@@ -64,9 +64,10 @@
     details.setAttribute('aria-expanded',String(detailsShown));
     details.setAttribute('aria-label',detailsShown?'Hide map details':'Show map details');
     const focused=!toolsShown&&!detailsShown;
-    focus.textContent=focused?'⛶ Restore panels':'⛶ Focus map';
+    focus.textContent=focused?'▣ Restore panels':'▣ Focus map';
     focus.setAttribute('aria-pressed',String(focused));
     focus.setAttribute('aria-label',focused?'Restore map panels':'Hide both map sidebars to maximise the canvas');
+    syncSettingsControls();
     if(settings.mode==='map')requestAnimationFrame(resizeCanvas);
   }
   function toggleMapPanel(which){
@@ -90,6 +91,72 @@
     applyMapPanelState();
     saveUiPreferences();
   }
+  // Native Fullscreen API fills the actual display. A CSS-only expanded
+  // workspace is provided for browsers that do not permit native fullscreen.
+  // Neither mode modifies site data or persisted sidebar preferences.
+  let fullscreenFallback=false;
+  let fullscreenToolsOpen=true;
+  function isMapFullscreen(){
+    return document.fullscreenElement===$('mapWorkspace')||fullscreenFallback;
+  }
+  function refreshFullscreenPresentation(){
+    const active=isMapFullscreen();
+    const button=$('fullscreenMapBtn'),palette=$('fullscreenToolsBtn'),strip=$('fullscreenToolstrip');
+    button.textContent=active?'⤢ Exit Full Screen':'⛶ Full Screen';
+    button.setAttribute('aria-pressed',String(active));
+    button.setAttribute('aria-label',active?'Exit full-screen map':'Enter full-screen map');
+    button.title=active?'Exit full screen (Esc)':'Make the map fill the screen';
+    palette.textContent=fullscreenToolsOpen?'☰ Hide tools':'☰ Show tools';
+    palette.setAttribute('aria-expanded',String(fullscreenToolsOpen));
+    strip.classList.toggle('is-collapsed',!fullscreenToolsOpen);
+    if(settings.mode==='map')requestAnimationFrame(()=>{resizeCanvas();drawSoon();});
+  }
+  async function exitMapFullscreen(){
+    const workspace=$('mapWorkspace');
+    if(document.fullscreenElement===workspace&&typeof document.exitFullscreen==='function'){
+      try{await document.exitFullscreen();}catch(err){
+        console.warn('Fullscreen exit was blocked by the browser.',err);
+      }
+    }
+    if(fullscreenFallback){
+      fullscreenFallback=false;
+      workspace.classList.remove('map-fullscreen-fallback');
+      document.body.classList.remove('map-fullscreen-active');
+    }
+    refreshFullscreenPresentation();
+  }
+  async function toggleMapFullscreen(){
+    if(settings.mode!=='map')return;
+    if(isMapFullscreen()){await exitMapFullscreen();return;}
+    const workspace=$('mapWorkspace');
+    fullscreenToolsOpen=true;
+    if(typeof workspace.requestFullscreen==='function'){
+      try{
+        // Directly called from the Full Screen button: user activation is
+        // preserved for the browser's native Fullscreen API.
+        await workspace.requestFullscreen();
+        refreshFullscreenPresentation();
+        return;
+      }catch(err){
+        console.warn('Native fullscreen was unavailable; expanding the map inside the window.',err);
+      }
+    }
+    fullscreenFallback=true;
+    workspace.classList.add('map-fullscreen-fallback');
+    document.body.classList.add('map-fullscreen-active');
+    refreshFullscreenPresentation();
+    toast('Expanded map view. Press Esc or Exit Full Screen to return.');
+  }
+  function toggleFullscreenTools(){
+    fullscreenToolsOpen=!fullscreenToolsOpen;
+    refreshFullscreenPresentation();
+  }
+  function syncSettingsControls(){
+    $('settingsTheme').value=uiPrefs.theme;
+    $('settingsLargerText').checked=uiPrefs.largerText===true;
+    $('settingsShowTools').checked=uiPrefs.mapToolsCollapsed!==true;
+    $('settingsShowDetails').checked=uiPrefs.mapDetailsCollapsed!==true;
+  }
   function applyUiPreferences(){
     const systemDark=typeof window.matchMedia==='function' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -97,14 +164,39 @@
     document.documentElement.classList.toggle('theme-dark',dark);
     document.documentElement.classList.toggle('larger-text',uiPrefs.largerText===true);
     document.documentElement.style.colorScheme=dark?'dark':'light';
-    const themeBtn=$('themeToggleBtn');
-    const textBtn=$('uiTextToggleBtn');
-    themeBtn.textContent=dark?'☀ Light mode':'☾ Dark mode';
-    themeBtn.setAttribute('aria-pressed',String(dark));
-    themeBtn.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
-    textBtn.textContent=uiPrefs.largerText?'A− Standard text':'A+ Larger text';
-    textBtn.setAttribute('aria-pressed',String(uiPrefs.largerText===true));
-    textBtn.setAttribute('aria-label',uiPrefs.largerText?'Use standard-sized interface text':'Use larger interface text');
+    syncSettingsControls();
+  }
+  function openSettings(){
+    syncSettingsControls();
+    $('settingsDialog').showModal();
+    $('settingsTheme').focus();
+  }
+  function setThemePreference(value){
+    if(!['system','light','dark'].includes(value))return;
+    uiPrefs.theme=value;
+    applyUiPreferences();
+    saveUiPreferences();
+  }
+  function setLargerTextPreference(enabled){
+    uiPrefs.largerText=Boolean(enabled);
+    applyUiPreferences();
+    saveUiPreferences();
+    if(settings.mode==='map')requestAnimationFrame(resizeCanvas);
+  }
+  function setPanelPreference(which,visible){
+    const key=which==='tools'?'mapToolsCollapsed':'mapDetailsCollapsed';
+    uiPrefs[key]=!Boolean(visible);
+    mapFocusRestore=null;
+    applyMapPanelState();
+    saveUiPreferences();
+  }
+  function resetDisplayPreferences(){
+    uiPrefs={theme:'system',largerText:false,mapToolsCollapsed:false,mapDetailsCollapsed:false};
+    mapFocusRestore=null;
+    applyUiPreferences();
+    applyMapPanelState();
+    saveUiPreferences();
+    toast('Display preferences reset on this device.');
   }
   function loadUiPreferences(){
     try{
@@ -128,16 +220,6 @@
       console.warn('Display preferences could not be saved in this browser.',err);
       toast('Display preference changed for this session only.');
     }
-  }
-  function toggleDarkMode(){
-    const currentlyDark=document.documentElement.classList.contains('theme-dark');
-    uiPrefs.theme=currentlyDark?'light':'dark';
-    applyUiPreferences();saveUiPreferences();
-  }
-  function toggleLargerText(){
-    uiPrefs.largerText=!uiPrefs.largerText;
-    applyUiPreferences();saveUiPreferences();
-    if(settings.mode==='map')requestAnimationFrame(resizeCanvas);
   }
   const pointers = new Map();
   let drawing = null;
@@ -1032,6 +1114,7 @@
   function switchMode(mode){
     if(mode!=='map'&&mode!=='admin')return;
     if(settings.mode===mode)return;
+    if(mode==='admin'&&isMapFullscreen())exitMapFullscreen();
     settings.mode=mode;
     const shell=$('appShell');
     shell.classList.toggle('mode-map',mode==='map');
@@ -2301,7 +2384,21 @@
  requestAnimationFrame(()=>window.print());
 }
   function wireUI(){
-    $('themeToggleBtn').addEventListener('click',toggleDarkMode);
+    $('settingsBtn').addEventListener('click',openSettings);
+    for(const id of ['settingsCloseX','settingsDoneBtn']){
+      $(id).addEventListener('click',()=>$('settingsDialog').close());
+    }
+    $('settingsTheme').addEventListener('change',event=>setThemePreference(event.target.value));
+    $('settingsLargerText').addEventListener('change',event=>setLargerTextPreference(event.target.checked));
+    $('settingsShowTools').addEventListener('change',event=>setPanelPreference('tools',event.target.checked));
+    $('settingsShowDetails').addEventListener('change',event=>setPanelPreference('details',event.target.checked));
+    $('settingsResetBtn').addEventListener('click',resetDisplayPreferences);
+    $('fullscreenMapBtn').addEventListener('click',toggleMapFullscreen);
+    $('fullscreenToolsBtn').addEventListener('click',toggleFullscreenTools);
+    document.addEventListener('fullscreenchange',refreshFullscreenPresentation);
+    document.addEventListener('fullscreenerror',()=>{
+      if(!isMapFullscreen())toast('Browser full screen was unavailable. Try Focus Map instead.');
+    });
     $('toggleToolsBtn').addEventListener('click',()=>toggleMapPanel('tools'));
     $('toggleDetailsBtn').addEventListener('click',()=>toggleMapPanel('details'));
     $('focusMapBtn').addEventListener('click',toggleMapFocus);
@@ -2322,7 +2419,6 @@
       $('highlightPreviewImage').removeAttribute('src');
       highlightPreviewTarget=null;
     });
-    $('uiTextToggleBtn').addEventListener('click',toggleLargerText);
     if(typeof window.matchMedia==='function'){
       const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
       systemTheme.addEventListener?.('change',()=>{
@@ -2472,9 +2568,17 @@
       }
     });
     document.addEventListener('keydown',event=>{
+      if(event.key==='Escape'&&isMapFullscreen()&&
+         !['settingsDialog','printDialog','highlightPreviewDialog','confirmDialog','clearCanvasDialog']
+           .some(id=>$(id).open)){
+        event.preventDefault();
+        exitMapFullscreen();
+        return;
+      }
       const target=event.target;
       if(target instanceof HTMLElement && (target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;
-      if($('confirmDialog').open||$('printDialog').open||$('clearCanvasDialog').open)return;
+      if($('confirmDialog').open||$('printDialog').open||$('clearCanvasDialog').open||
+         $('settingsDialog').open||$('highlightPreviewDialog').open)return;
       // Admin workspace has no drawing shortcuts. Ctrl+A must never
       // accidentally activate Move All while staff work through invoices.
       if(settings.mode==='admin'){

@@ -26,10 +26,6 @@
         <button type="button" id="modeMapBtn" class="mode-switch active" aria-pressed="true" title="Draw and edit the site plan"><span class="mode-icon">▦</span> Map Mode</button>
         <button type="button" id="modeAdminBtn" class="mode-switch" aria-pressed="false" title="Manage Excel reports and collections"><span class="mode-icon">☷</span> Admin Mode</button>
       </nav>
-      <div class="accessibility-controls" role="group" aria-label="Display and accessibility preferences">
-        <button id="themeToggleBtn" type="button" class="accessibility-toggle" aria-pressed="false" title="Switch between light and dark mode">☾ Dark mode</button>
-        <button id="uiTextToggleBtn" type="button" class="accessibility-toggle" aria-pressed="false" title="Make the app's menus and text larger">A+ Larger text</button>
-      </div>
       <div class="project-control">
         <label for="projectSelect">SITE</label>
         <select id="projectSelect" title="Switch locally saved sites"></select>
@@ -42,6 +38,7 @@
         <button class="btn btn-primary" id="exportBtn" title="Export this site as a portable JSON file">Export Site JSON <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 17v4h14v-4"/></svg></button>
         <input type="file" id="importFile" accept=".json,application/json" hidden>
       </div>
+      <button id="settingsBtn" type="button" class="settings-launch" aria-haspopup="dialog" aria-controls="settingsDialog" title="Display, text and map layout settings">⚙ Settings</button>
     </header>
 
     <section class="summary-strip" aria-label="Site totals">
@@ -84,14 +81,16 @@
         <div class="tool-hint"><strong>Quick tips</strong><p>Drag to draw lots, independent <b>area boxes</b> or walls. Boxes have custom labels and colours without invoices. Tap a lot with <b>Green Off</b> to clear it. Select anything to edit its details.</p><p>Use <b>Delete Item</b> to tap an object to remove it. Undo restores deleted items. Mouse wheel to zoom, or drag empty space while using Select to pan without moving objects. Space-drag and middle-drag also pan. Use <b>Move All</b> to move the drawing itself. On mobile, use <b>Pan</b> or pinch.</p></div>
       </aside>
 
-      <main class="workspace">
+      <main class="workspace" id="mapWorkspace" aria-label="Site drawing and map controls">
         <div class="canvas-toolbar">
           <div class="canvas-title"><span class="canvas-live"></span><strong id="canvasTitle">Site Layout</strong><span id="siteDimensions">48 × 32 m</span></div>
           <div class="canvas-actions">
             <div class="map-layout-buttons" role="group" aria-label="Show or hide map panels">
               <button class="mini-btn map-layout-toggle" id="toggleToolsBtn" type="button" aria-controls="mapToolSidebar" aria-expanded="true" title="Show or hide drawing tools">☰ Tools</button>
               <button class="mini-btn map-layout-toggle" id="toggleDetailsBtn" type="button" aria-controls="mapDetailsSidebar" aria-expanded="true" title="Show or hide lot details">▣ Details</button>
-              <button class="mini-btn map-layout-toggle" id="focusMapBtn" type="button" aria-pressed="false" title="Maximise map area by hiding both sidebars">⛶ Focus</button>
+              <button class="mini-btn map-layout-toggle" id="focusMapBtn" type="button" aria-pressed="false" title="Hide both sidebars without entering browser full screen">▣ Focus</button>
+              <button class="mini-btn map-fullscreen-btn" id="fullscreenMapBtn" type="button" aria-pressed="false" title="Full screen map (Esc to exit)">⛶ Full Screen</button>
+              <button class="mini-btn fullscreen-tools-btn" id="fullscreenToolsBtn" type="button" aria-expanded="true" aria-controls="fullscreenToolstrip" title="Show or hide drawing tools in full screen">☰ Tools</button>
             </div>
             <button class="mini-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
             <button class="mini-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
@@ -106,6 +105,21 @@
           <button class="mini-btn map-text-toggle" id="textToggleBtn" type="button" aria-pressed="true" title="Show or hide all text on the plan">Aa · Show</button>
           <button class="mini-btn print-open-btn" id="printPreviewBtn" type="button" title="Print preview and save as PDF">Print preview</button>
           </div>
+        </div>
+        <div class="fullscreen-toolstrip" id="fullscreenToolstrip" role="toolbar" aria-label="Full screen drawing tools">
+          <span class="fullscreen-tools-label">DRAWING TOOLS</span>
+          <button type="button" class="fullscreen-tool" data-tool="select" aria-pressed="true" title="Select (V)">Select (V)</button>
+          <button type="button" class="fullscreen-tool" data-tool="move-all" aria-pressed="false" title="Move All (A)">Move All (A)</button>
+          <button type="button" class="fullscreen-tool" data-tool="pan" aria-pressed="false" title="Pan (P)">Pan (P)</button>
+          <button type="button" class="fullscreen-tool" data-tool="lot" aria-pressed="false" title="Draw Lot (L)">Draw Lot (L)</button>
+          <button type="button" class="fullscreen-tool" data-tool="wall" aria-pressed="false" title="Wall (W)">Wall (W)</button>
+          <button type="button" class="fullscreen-tool" data-tool="door" aria-pressed="false" title="Door (D)">Door (D)</button>
+          <button type="button" class="fullscreen-tool" data-tool="shutter" aria-pressed="false" title="Shutter (S)">Shutter (S)</button>
+          <button type="button" class="fullscreen-tool" data-tool="box" aria-pressed="false" title="Area (B)">Area (B)</button>
+          <button type="button" class="fullscreen-tool" data-tool="green" aria-pressed="false" title="Green Off (G)">Green Off (G)</button>
+          <button type="button" class="fullscreen-tool" data-tool="lock" aria-pressed="false" title="Lock (K)">Lock (K)</button>
+          <button type="button" class="fullscreen-tool" data-tool="label" aria-pressed="false" title="Label (T)">Label (T)</button>
+          <button type="button" class="fullscreen-tool" data-tool="delete" aria-pressed="false" title="Delete (E)">Delete (E)</button>
         </div>
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="siteCanvas" aria-label="Interactive scaled auction site plan"></canvas>
@@ -143,7 +157,51 @@
   </div>
   <input type="file" id="adminExcelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <dialog id="highlightPreviewDialog" class="highlight-preview-dialog" aria-labelledby="highlightPreviewTitle" aria-describedby="highlightPreviewHelp">
+  <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle" aria-describedby="settingsDescription">
+  <div class="settings-header">
+    <div>
+      <span class="settings-eyebrow">YARDMAP PREFERENCES</span>
+      <h2 id="settingsTitle">Settings</h2>
+      <p id="settingsDescription">Make YardMap comfortable to use. These display settings are remembered on this device.</p>
+    </div>
+    <button id="settingsCloseX" type="button" class="settings-close" aria-label="Close settings">✕</button>
+  </div>
+  <div class="settings-body">
+    <section class="settings-section" aria-labelledby="settingsAppearanceTitle">
+      <h3 id="settingsAppearanceTitle">Appearance</h3>
+      <label for="settingsTheme">Colour theme</label>
+      <select id="settingsTheme">
+        <option value="system">Follow device settings</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+      <label class="settings-check" for="settingsLargerText">
+        <input id="settingsLargerText" type="checkbox">
+        <span><strong>Larger text</strong><small>Increase labels, buttons and forms for easier reading</small></span>
+      </label>
+    </section>
+    <section class="settings-section" aria-labelledby="settingsLayoutTitle">
+      <h3 id="settingsLayoutTitle">Map workspace</h3>
+      <p class="settings-help">Choose which sidebars are visible in Map Mode. You can also change these using the map toolbar.</p>
+      <label class="settings-check" for="settingsShowTools">
+        <input id="settingsShowTools" type="checkbox" checked>
+        <span><strong>Show drawing tools</strong><small>Left-hand panel for editing the site</small></span>
+      </label>
+      <label class="settings-check" for="settingsShowDetails">
+        <input id="settingsShowDetails" type="checkbox" checked>
+        <span><strong>Show site details</strong><small>Right-hand panel for selected lots and access</small></span>
+      </label>
+      <p class="settings-help">Full Screen Map is controlled from Map Mode. Press Esc or Exit Full Screen to return to the regular workspace.</p>
+    </section>
+    <p class="settings-privacy">Display preferences are stored locally and are separate from your site plan JSON, daily Excel data and collections records.</p>
+  </div>
+  <div class="settings-footer">
+    <button id="settingsResetBtn" type="button" class="btn btn-light">Reset display preferences</button>
+    <button id="settingsDoneBtn" type="button" class="btn btn-primary">Done</button>
+  </div>
+</dialog>
+
+<dialog id="highlightPreviewDialog" class="highlight-preview-dialog" aria-labelledby="highlightPreviewTitle" aria-describedby="highlightPreviewHelp">
   <header class="highlight-preview-header">
     <div>
       <h2 id="highlightPreviewTitle">Highlighted site plan</h2>

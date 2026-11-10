@@ -904,3 +904,199 @@
  .map-layout-toggle,.highlight-preview-close,.map-highlight-notice .map-highlight-action{transition:none}
 }
 @media print{.highlight-preview-dialog{display:none!important}}
+
+/* Settings: one header action, with the individual display options on a
+   dedicated settings surface instead of crowding the primary navigation. */
+.settings-launch{
+ display:inline-flex;align-items:center;justify-content:center;gap:7px;
+ flex:0 0 auto;min-height:42px;padding:9px 13px;
+ border:1px solid #c4d5e6;border-radius:10px;background:#fff;
+ color:#2e5278;font-size:13px;font-weight:800;white-space:nowrap;cursor:pointer;
+}
+.settings-launch:hover{background:#ecf5ff;border-color:#95b9e3}
+.settings-dialog{
+ width:min(680px,95vw);max-width:680px;max-height:min(92dvh,920px);
+ padding:0;border:1px solid #d4e2ef;border-radius:16px;
+ background:#f9fbfe;color:#243f59;box-shadow:0 22px 70px #05182d79;
+ overflow:auto;overscroll-behavior:contain;
+}
+.settings-dialog::backdrop{background:#091b30a6}
+.settings-header{
+ display:flex;justify-content:space-between;align-items:flex-start;gap:18px;
+ padding:25px 28px 22px;border-bottom:1px solid #dce6ef;background:#fff;
+}
+.settings-eyebrow{font-size:10px;font-weight:900;letter-spacing:1.35px;color:#3978bc}
+.settings-header h2{margin:5px 0 8px;font-size:26px;line-height:1.2;color:#244669}
+.settings-header p{margin:0;font-size:13px;line-height:1.55;color:#668098;max-width:480px}
+.settings-close{
+ flex:0 0 42px;min-height:42px;border:1px solid #cbdae9;border-radius:9px;
+ background:#f4f8fd;color:#34597f;font-size:17px;cursor:pointer
+}
+.settings-close:hover{background:#e9f3ff}
+.settings-body{padding:22px 28px 12px}
+.settings-section{padding:0 0 24px;margin:0 0 25px;border-bottom:1px solid #e0e9f1}
+.settings-section h3{font-size:17px;color:#284d73;margin:0 0 16px}
+.settings-section>label:not(.settings-check){font-size:13px;font-weight:800;color:#486581;display:block;margin-bottom:9px}
+.settings-section>select{
+ width:100%;min-height:48px;margin:0 0 18px;border:1px solid #bfd2e5;
+ border-radius:9px;background:#fff;color:#264560;padding:10px 12px;
+ font-size:14px;cursor:pointer
+}
+.settings-check{
+ display:flex;align-items:center;gap:12px;min-height:66px;padding:12px 14px;
+ background:#fff;border:1px solid #dbe6f0;border-radius:10px;
+ cursor:pointer;margin:11px 0
+}
+.settings-check:hover{border-color:#86b3e3;background:#f5faff}
+.settings-check>input{width:20px;height:20px;flex:0 0 20px;accent-color:#2671bd;cursor:pointer}
+.settings-check>span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.settings-check strong{font-size:14px;color:#2d4f72}
+.settings-check small{font-size:12px;color:#687f96;line-height:1.45}
+.settings-help{font-size:12px;line-height:1.55;color:#617b94;margin:0 0 14px}
+.settings-privacy{
+ background:#edf5fd;border:1px solid #d6e6f5;border-radius:10px;
+ padding:13px 15px;color:#466887;font-size:12px;line-height:1.55
+}
+.settings-footer{
+ display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
+ padding:17px 28px 22px;background:#fff;border-top:1px solid #dce6ef
+}
+.settings-footer .btn{min-height:44px;font-size:13px;white-space:normal}
+.theme-dark .settings-launch{background:#253c54;border-color:#4b6882;color:#e3eeff}
+.theme-dark .settings-launch:hover{background:#345775;border-color:#78a9e3}
+.theme-dark .settings-dialog{background:#18283a;border-color:#415a74;color:#e6f1ff}
+.theme-dark .settings-header,.theme-dark .settings-footer{background:#1e3248;border-color:#425d78}
+.theme-dark .settings-header h2,.theme-dark .settings-section h3,
+.theme-dark .settings-section>label:not(.settings-check),
+.theme-dark .settings-check strong{color:#e2eeff}
+.theme-dark .settings-header p,.theme-dark .settings-help,
+.theme-dark .settings-check small{color:#b9cce1}
+.theme-dark .settings-eyebrow{color:#9dcaff}
+.theme-dark .settings-close{background:#29445f;border-color:#597793;color:#e8f4ff}
+.theme-dark .settings-close:hover{background:#365776}
+.theme-dark .settings-section{border-color:#3d536c}
+.theme-dark .settings-section>select,
+.theme-dark .settings-check{background:#233a50;border-color:#48637c;color:#e6efff}
+.theme-dark .settings-check:hover{background:#2b4862;border-color:#7ba9dc}
+.theme-dark .settings-privacy{background:#203b54;border-color:#4b6a87;color:#c4daf1}
+@media(max-width:550px){
+ .settings-header{padding:20px 17px}
+ .settings-header h2{font-size:22px}
+ .settings-body{padding:18px 17px 5px}
+ .settings-footer{padding:15px 17px}
+ .settings-footer .btn{flex:1 1 150px}
+}
+
+/* True full-screen drawing. The workspace itself is the fullscreen element,
+   so its existing map toolbar remains available while the browser chrome
+   and the two outer sidebars disappear. Browsers that disallow native
+   fullscreen use a clearly reversible viewport-filling fallback. */
+.fullscreen-tools-btn,.fullscreen-toolstrip{display:none}
+body.map-fullscreen-active{overflow:hidden!important}
+.workspace.map-fullscreen-fallback{
+ position:fixed!important;inset:0!important;z-index:15000;
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback){
+ box-sizing:border-box!important;display:flex!important;flex-direction:column!important;
+ width:100vw!important;height:100dvh!important;max-height:100dvh!important;
+ min-height:0!important;max-width:none!important;
+ padding:0!important;margin:0!important;gap:0!important;
+ overflow:hidden!important;background:#e6edf5!important;border:0!important;
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar{
+ display:flex!important;align-items:center;flex-wrap:wrap;gap:7px;
+ flex:0 0 auto!important;min-height:48px!important;
+ padding:7px 12px!important;border-radius:0!important;border:0!important;
+ border-bottom:1px solid #cfdeeb!important;
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-actions{
+ display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0;
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) #toggleToolsBtn,
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) #toggleDetailsBtn,
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) #focusMapBtn{
+ display:none!important
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-tools-btn{
+ display:inline-flex!important;align-items:center;justify-content:center;
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .map-layout-buttons{
+ padding-right:6px;margin-right:1px
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-toolstrip{
+ display:flex!important;align-items:center;gap:7px;flex:0 0 auto!important;
+ min-height:48px;max-height:62px;padding:6px 12px;background:#f0f5fb;
+ border-bottom:1px solid #d2dfed;white-space:nowrap;
+ overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+ overscroll-behavior-x:contain
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-toolstrip.is-collapsed{
+ display:none!important
+}
+.fullscreen-tools-label{flex:0 0 auto;font-size:10px;font-weight:900;letter-spacing:1px;color:#607d98;margin-right:7px}
+.fullscreen-tool{
+ min-width:0;min-height:36px;flex:0 0 auto;padding:7px 11px;
+ border:1px solid #bfd1e4;border-radius:8px;background:#fff;
+ color:#3d5a76;font-weight:750;font-size:12px;white-space:nowrap;cursor:pointer;
+}
+.fullscreen-tool:hover{background:#eaf4ff;border-color:#82b3e4}
+.fullscreen-tool.active,.fullscreen-tool[aria-pressed="true"]{
+ background:#236bb4;border-color:#236bb4;color:#fff
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-wrap{
+ flex:1 1 0%!important;min-height:0!important;height:auto!important;
+ margin:0!important;border:0!important;overflow:hidden!important
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-wrap canvas{
+ display:block;width:100%;height:100%
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-footer{
+ flex:0 0 auto!important;min-height:30px!important;
+ padding:6px 12px!important;border-radius:0!important;border:0!important;
+ border-top:1px solid #d3e1ee!important
+}
+.theme-dark :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback){
+ background:#1b2c40!important
+}
+.theme-dark :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar,
+.theme-dark :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-footer{
+ background:#1a2d42!important;border-color:#405874!important
+}
+.theme-dark :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-toolstrip{
+ background:#20364c;border-color:#47627b
+}
+.theme-dark .fullscreen-tools-label{color:#b9cce1}
+.theme-dark .fullscreen-tool{background:#2a435e;color:#e3f0ff;border-color:#476783}
+.theme-dark .fullscreen-tool:hover{background:#365b7e}
+.theme-dark .fullscreen-tool.active,.theme-dark .fullscreen-tool[aria-pressed="true"]{
+ background:#2e75cb;color:#fff;border-color:#5793d7
+}
+@media(max-width:780px){
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar{
+   gap:4px;padding:6px!important
+ }
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-title{
+   display:none!important
+ }
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-actions{
+   width:100%;justify-content:center;gap:4px
+ }
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-toolstrip{
+   padding:5px 8px;min-height:46px
+ }
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-tool{
+   padding:6px 9px;font-size:11px
+ }
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-footer{
+   font-size:9px;gap:6px
+ }
+}
+@media(max-width:520px){
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-actions .text-scale-ctrl,
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-actions .print-open-btn{
+   display:none!important
+ }
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .map-layout-buttons{
+   flex:0 0 auto;padding:0;border:0
+ }
+}
