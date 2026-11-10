@@ -445,7 +445,7 @@
       </div>
       <div class="schedule-foot">Payment contacted: ${r.contactedForPayment?'Yes':'No'} · RAMS: ${r.ramsChecked?'Checked':'Not checked'} · Notes: ${r.notes.length}</div>
       ${current?`<button type="button" class="btn btn-light schedule-edit" data-collection-select="${e(item.key)}">Edit collection / notes</button>`:''}
-      ${current&&first?`<button type="button" class="btn btn-light schedule-edit" data-view-collection-map="${e(item.key)}">View on site plan · highlight lots</button>`:''}
+      ${current&&first?`<button type="button" class="btn btn-light schedule-edit" data-view-collection-map="${e(item.key)}">Preview / download highlighted site plan</button>`:''}
     </article>`;
   }
   function scheduleHTML(){
@@ -585,7 +585,7 @@
       <p class="panel-description">${e(item.lots.length?item.lots.length+' associated lot(s): '+item.lots.join(', '):'No lots linked')}</p>
       <p class="field-help">Invoice number, buyer details, lot numbers and descriptions come from the Excel file and are read-only here.</p>
       ${collectionStatusChips(item)}
-      ${item.drawnIds.length?`<button type="button" class="btn btn-light collection-view-map" data-view-collection-map="${e(item.key)}">Highlight ${item.drawnIds.length} mapped lot(s) on site plan</button>`:''}
+      ${item.drawnIds.length?`<button type="button" class="btn btn-light collection-view-map" data-view-collection-map="${e(item.key)}">Preview / download ${item.drawnIds.length} highlighted lot(s)</button>`:''}
       <div class="collection-buyer-info">
         <strong>${e(buyer||'Buyer not supplied')}</strong>
         ${mobile||telephone?`<span>Buyer contact: ${e([mobile,telephone].filter(Boolean).join(' / '))}</span>`:''}
