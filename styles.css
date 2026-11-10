@@ -1100,3 +1100,140 @@ body.map-fullscreen-active{overflow:hidden!important}
    flex:0 0 auto;padding:0;border:0
  }
 }
+
+/* Full-screen contextual inspector: use the *existing* details editor,
+   moved into this drawer while the workspace is fullscreen. */
+.fullscreen-details-drawer[hidden]{display:none!important}
+.fullscreen-details-drawer{display:none}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback){position:relative!important}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-details-drawer:not([hidden]){
+ position:absolute;display:flex!important;flex-direction:column;
+ right:0;top:58px;bottom:30px;
+ width:min(430px,44vw);max-width:100%;
+ z-index:25;overflow:hidden;
+ border-left:2px solid #a9c8e7;
+ border-radius:13px 0 0 13px;
+ background:#fff;color:#243f5d;
+ box-shadow:-14px 2px 35px #0d29445e;
+}
+.fullscreen-drawer-heading{
+ flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+ gap:10px;padding:15px 17px;background:#eef6ff;
+ border-bottom:1px solid #cee0f0;
+}
+.fullscreen-drawer-heading span{font-size:10px;font-weight:900;letter-spacing:1px;color:#49769f}
+.fullscreen-drawer-heading h2{font-size:16px;line-height:1.3;margin:4px 0 0;color:#24486d;overflow-wrap:anywhere}
+.fullscreen-drawer-heading button{
+ flex:0 0 40px;min-height:40px;border:1px solid #acc7de;background:#fff;
+ border-radius:9px;color:#315e86;font-size:17px;cursor:pointer
+}
+.fullscreen-details-host{min-height:0;display:flex;flex:1 1 auto;overflow:hidden}
+.fullscreen-details-host .panel-content{
+ flex:1 1 auto!important;min-height:0!important;max-height:none!important;
+ overflow:auto!important;width:100%!important;
+ padding:18px!important;background:#fff;color:#29445e
+}
+.fullscreen-details-host .panel-content .panel-title{font-size:16px}
+.fullscreen-details-host .panel-content .field input,
+.fullscreen-details-host .panel-content .field textarea{width:100%}
+.theme-dark .fullscreen-details-drawer{background:#172a3e!important;color:#e8f2ff!important;border-color:#557b9f!important}
+.theme-dark .fullscreen-drawer-heading{background:#25425f;border-color:#496884}
+.theme-dark .fullscreen-drawer-heading span,.theme-dark .fullscreen-drawer-heading h2{color:#e3efff}
+.theme-dark .fullscreen-drawer-heading button{background:#304e6b;border-color:#5b7d9e;color:#fff}
+.theme-dark .fullscreen-details-host .panel-content{background:#172a3e;color:#dfebfb}
+@media(max-width:800px){
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-details-drawer:not([hidden]){
+  top:56px;bottom:30px;width:min(370px,90vw)
+ }
+}
+@media(max-width:500px){
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-details-drawer:not([hidden]){
+  top:55px;bottom:29px;width:92vw;border-radius:12px 0 0 12px
+ }
+}
+/* Rotation is a view-only, quarter-turn pivot; screen coordinate hit
+   testing uses the inverse transform. */
+.map-rotation-controls{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+.map-rotation-controls .mini-btn{min-height:37px;font-size:11px;font-weight:800;padding:5px 7px;white-space:nowrap}
+.map-rotation-label{font-size:12px;font-weight:850;min-width:32px;text-align:center;color:#3e6387}
+.theme-dark .map-rotation-label{color:#c0d9f4}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .map-rotation-controls{display:flex!important}
+@media(max-width:650px){
+ .map-rotation-controls .mini-btn{padding:4px 6px;font-size:10px}
+ .map-rotation-label{font-size:11px}
+}
+/* Print the legible group directory *beside* the numbered schematic.
+   A4 shows four buyers; A3 six. Further groups continue on pages,
+   not clipped at the bottom of tiny lot rectangles. */
+.print-page-body{display:flex;flex:1 1 auto;min-height:0;gap:10px;padding:10px 0}
+.print-page-body>.print-map-area{flex:1 1 auto;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center}
+.print-page-body>.print-map-area img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+.print-page-body .print-buyer-side[hidden]{display:none!important}
+.print-page.with-buyer-side .print-map-area{flex:0 0 58%;width:58%}
+.print-buyer-side{
+ flex:0 0 40%;width:40%;min-width:0;
+ border-left:1px solid #cbd9e7;padding:0 0 0 10px;
+ overflow:hidden;color:#263f57
+}
+.print-buyer-side>header{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;border-bottom:2px solid #b7cce0;padding-bottom:8px}
+.print-buyer-side>header strong{font-size:10px;letter-spacing:.05em;color:#285b8b}
+.print-buyer-side>header small{font-size:9px;color:#667f96}
+.buyer-print-card{
+ margin:0 0 9px;border:1px solid #d6e2ed;background:#f8fbfe;
+ border-radius:8px;padding:10px 11px;color:#263e58;
+ overflow-wrap:anywhere;break-inside:avoid;page-break-inside:avoid
+}
+.buyer-print-card h3{font-size:12px;line-height:1.35;color:#234f7a;margin:0 0 6px}
+.buyer-print-card h3 span{font-size:10px;color:#53718f;font-weight:700}
+.buyer-print-card p{font-size:10px;line-height:1.45;margin:4px 0;overflow-wrap:anywhere}
+.buyer-print-card p strong{font-weight:850;color:#29465f}
+.buyer-print-card .buyer-lots{border-bottom:1px solid #dce7f1;padding-bottom:5px;margin-bottom:6px}
+.buyer-print-card .buyer-recovery{margin-top:7px;padding-top:6px;border-top:1px dashed #ccdcea}
+.buyer-more{font-size:10px;line-height:1.4;font-weight:850;color:#6f511f;background:#fff4d9;border-radius:6px;padding:8px}
+.buyer-side-empty{font-size:11px;color:#5e748e}
+.buyer-print-continuation{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.buyer-print-continuation .buyer-print-card{margin:0}
+.print-contact-layout-label{display:flex;align-items:center;gap:7px;font-size:11px;color:#385a7d;font-weight:700}
+.print-contact-layout-label select{min-height:35px;max-width:210px;border:1px solid #b9cde2;border-radius:7px;background:#fff;color:#27435f;padding:6px;font-size:11px}
+.theme-dark .print-contact-layout-label{color:#d3e4f9}
+.theme-dark .print-contact-layout-label select{background:#20354a;color:#ecf5ff;border-color:#52708e}
+.theme-dark .print-buyer-side,.theme-dark .print-buyer-side *{color:#263e58}
+.theme-dark .print-buyer-side>header strong{color:#285b8b}
+.theme-dark .print-buyer-side>header small{color:#667f96}
+.theme-dark .buyer-print-continuation .buyer-print-card,.theme-dark .buyer-print-continuation .buyer-print-card *{color:#263e58}
+@media(max-width:700px){
+ .print-page-body{gap:5px;padding:6px 0}
+ .print-page.with-buyer-side .print-map-area{flex-basis:54%;width:54%}
+ .print-buyer-side{flex-basis:44%;width:44%;padding-left:6px}
+ .buyer-print-card{padding:6px 7px;margin-bottom:6px}
+ .buyer-print-card h3{font-size:10px}
+ .buyer-print-card p{font-size:9px}
+ .buyer-print-continuation{grid-template-columns:1fr}
+}
+@media print{
+ .fullscreen-details-drawer{display:none!important}
+ .print-page-body{display:flex!important;flex:1 1 auto!important;min-height:0!important;gap:3mm!important}
+ .print-page.with-buyer-side .print-map-area{flex:0 0 57%!important;width:57%!important}
+ .print-buyer-side{flex:0 0 40%!important;width:40%!important;border-left:1px solid #afc5d8;padding-left:3mm!important}
+ .print-buyer-side .buyer-print-card{padding:2mm 2.5mm!important;margin-bottom:2mm!important;border-color:#cbdce9!important}
+ .print-buyer-side .buyer-print-card h3{font-size:8pt!important}
+ .print-buyer-side .buyer-print-card p{font-size:7.5pt!important}
+ .print-buyer-side>header strong{font-size:8pt!important}
+ .print-buyer-side>header small{font-size:7pt!important}
+ .buyer-print-continuation{grid-template-columns:repeat(2,minmax(0,1fr));gap:3mm}
+ .buyer-print-continuation .buyer-print-card{break-inside:avoid}
+ .buyer-print-card{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* Keep the contextual editor below both fullscreen control rows so it
+   never obstructs the map's compact drawing-tool palette. */
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-details-drawer:not([hidden]){
+ top:112px;
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback):has(.fullscreen-toolstrip.is-collapsed) .fullscreen-details-drawer:not([hidden]){
+ top:58px;
+}
+@media(max-width:800px){
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-details-drawer:not([hidden]){top:105px}
+ :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback):has(.fullscreen-toolstrip.is-collapsed) .fullscreen-details-drawer:not([hidden]){top:56px}
+}

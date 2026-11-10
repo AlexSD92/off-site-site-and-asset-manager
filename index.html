@@ -98,6 +98,12 @@
             <button class="mini-btn" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
             <span id="zoomLabel" class="zoom-label">100%</span>
             <button class="mini-btn" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+            <div class="map-rotation-controls" role="group" aria-label="Rotate map view without moving lots">
+              <button class="mini-btn" id="rotateMapLeft" type="button" title="Rotate map 90 degrees anticlockwise" aria-label="Rotate map 90 degrees anticlockwise">↶ 90°</button>
+              <span id="mapRotationLabel" class="map-rotation-label" aria-live="polite">0°</span>
+              <button class="mini-btn" id="rotateMapRight" type="button" title="Rotate map 90 degrees clockwise" aria-label="Rotate map 90 degrees clockwise">↷ 90°</button>
+              <button class="mini-btn" id="rotateMapReset" type="button" title="Reset map orientation" aria-label="Reset map orientation to zero degrees">0°</button>
+            </div>
             <button class="mini-btn fit-btn" id="fitBtn" title="Fit site to view">Fit</button>
             <button class="mini-btn toolbar-move-all" id="moveAllBtn" type="button" aria-pressed="false" title="Move the complete drawing (A / Ctrl+A)">Move All</button>
           <span class="toolbar-separator"></span>
@@ -106,6 +112,13 @@
           <button class="mini-btn print-open-btn" id="printPreviewBtn" type="button" title="Print preview and save as PDF">Print preview</button>
           </div>
         </div>
+        <aside id="fullscreenDetailsDrawer" class="fullscreen-details-drawer" aria-label="Selected map object details" hidden>
+          <div class="fullscreen-drawer-heading">
+            <div><span>SELECTED MAP ITEM</span><h2 id="fullscreenDrawerTitle">Lot details</h2></div>
+            <button id="fullscreenDrawerClose" type="button" aria-label="Close selected lot details">✕</button>
+          </div>
+          <div id="fullscreenDetailsHost" class="fullscreen-details-host"></div>
+        </aside>
         <div class="fullscreen-toolstrip" id="fullscreenToolstrip" role="toolbar" aria-label="Full screen drawing tools">
           <span class="fullscreen-tools-label">DRAWING TOOLS</span>
           <button type="button" class="fullscreen-tool" data-tool="select" aria-pressed="true" title="Select (V)">Select (V)</button>
@@ -232,13 +245,22 @@
     <label>Layout <select id="printOrientation"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label>
     <label class="print-check print-site-option"><input id="printText" type="checkbox" checked> Show text</label>
     <label class="print-check print-site-option"><input id="printGrid" type="checkbox" checked> Show grid</label>
-    <label class="print-check print-site-option"><input id="printContact" type="checkbox" checked> Include lot contacts</label>
+    <label class="print-check print-site-option"><input id="printContact" type="checkbox" checked> Include buyer contacts</label>
+    <label class="print-site-option print-contact-layout-label" for="printBuyerLayout">Contact layout
+      <select id="printBuyerLayout">
+        <option value="buyerSide">Buyer directory beside map</option>
+        <option value="lotDirectory">Detailed lot directory</option>
+      </select>
+    </label>
     <button id="printGoBtn" class="btn btn-primary" type="button">Print / Save PDF</button>
   </div>
   <div class="print-stage">
     <section id="printPage" class="print-page" aria-label="Printable site plan">
       <header class="print-page-header"><div><strong id="printSiteName"></strong><small id="printMeta"></small></div><b>YARDMAP · SITE PLAN</b></header>
-      <div class="print-map-area"><img id="printMap" alt="Site plan for printing"></div>
+      <div class="print-page-body" id="printPageBody">
+        <div class="print-map-area"><img id="printMap" alt="Site plan for printing"></div>
+        <aside class="print-buyer-side" id="printBuyerSide" aria-label="Buyer contact directory" hidden></aside>
+      </div>
       <footer class="print-page-footer"><span id="printScale"></span><span id="printCounts"></span></footer>
     </section>
     <section id="printDirectory" class="print-directory" hidden></section>

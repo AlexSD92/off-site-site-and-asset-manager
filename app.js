@@ -36,6 +36,21 @@
   const wrap = $('canvasWrap');
   const ctx = canvas.getContext('2d');
   const panel = $('panelContent');
+  const panelHome = panel.parentNode; // move the real editor, not a cloned copy
+  function syncFullscreenDetails(){
+    const drawer=$('fullscreenDetailsDrawer'),host=$('fullscreenDetailsHost');
+    const selected=isMapFullscreen()&&settings.mode==='map'?getSelected():null;
+    if(selected){
+      if(panel.parentNode!==host)host.appendChild(panel);
+      drawer.hidden=false;
+      $('fullscreenDrawerTitle').textContent=selected.type==='lot'
+        ?'Lot '+(selected.number||'—')+' · Details'
+        :selected.type[0].toUpperCase()+selected.type.slice(1)+' details';
+    }else{
+      drawer.hidden=true;
+      if(panel.parentNode!==panelHome)panelHome.appendChild(panel);
+    }
+  }
   const COLORS = { wall:'#354963', door:'#307fc9', shutter:'#bf8636', lock:'#d19827', label:'#314969' };
   const minmax = (x,min,max) => Math.min(max,Math.max(min,x));
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -48,7 +63,7 @@
     lotFilter:'all', lotSearch:'', selected:null, panFromSpace:false,
     collectionsView:'list', collectionsSelectedKey:null, collectionsSearch:'',
     collectionsSort:'lotAsc',lotSort:'numberAsc' };
-  const view = {zoom:1, offsetX:0, offsetY:0, width:900, height:580, fitted:false};
+  const view = {zoom:1, offsetX:0, offsetY:0, width:900, height:580, fitted:false, rotation:0};
   let uiPrefs={theme:'system',largerText:false,mapToolsCollapsed:false,mapDetailsCollapsed:false};
   let mapFocusRestore=null;
   function applyMapPanelState(){
@@ -109,6 +124,7 @@
     palette.textContent=fullscreenToolsOpen?'☰ Hide tools':'☰ Show tools';
     palette.setAttribute('aria-expanded',String(fullscreenToolsOpen));
     strip.classList.toggle('is-collapsed',!fullscreenToolsOpen);
+    syncFullscreenDetails();
     if(settings.mode==='map')requestAnimationFrame(()=>{resizeCanvas();drawSoon();});
   }
   async function exitMapFullscreen(){
@@ -1116,6 +1132,7 @@
     if(settings.mode===mode)return;
     if(mode==='admin'&&isMapFullscreen())exitMapFullscreen();
     settings.mode=mode;
+    if(mode==='admin')syncFullscreenDetails();
     const shell=$('appShell');
     shell.classList.toggle('mode-map',mode==='map');
     shell.classList.toggle('mode-admin',mode==='admin');
@@ -1141,29 +1158,63 @@
     if(id&&settings.tool==='move-all')setTool('select');
     settings.selected=id;
     if(showDetails)switchTab('properties');else renderPanel();
+    syncFullscreenDetails();
     if(focus){const o=getSelected();if(o)centerOn(o);}
     drawSoon();
   }
   function refreshAll(){
     const panelScroll=panel.scrollTop;
     refreshStats();renderPanel();refreshProjectSelector();
+    syncFullscreenDetails();
     panel.scrollTop=panelScroll;
     drawSoon();
   }
 
   // Coordinates are stored in whole grid units; physical distance is cellMeters per unit.
   const scale=()=>CELL_PX*view.zoom;
+  // Rotation is view-only. Site coordinates, lot geometry, keys and saved
+  // structural JSON stay in their original orientation.
+  function quarterTurnPoint(x,y,rotation=view.rotation){
+    switch((rotation%4+4)%4){
+      case 1:return {x:-y,y:x};
+      case 2:return {x:-x,y:-y};
+      case 3:return {x:y,y:-x};
+      default:return {x,y};
+    }
+  }
+  function unrotatePoint(x,y,rotation=view.rotation){
+    return quarterTurnPoint(x,y,4-(rotation%4+4)%4);
+  }
+  function rotatedSiteBounds(rotation=view.rotation){
+    const corners=[[0,0],[project.cols,0],[0,project.rows],[project.cols,project.rows]]
+      .map(([x,y])=>quarterTurnPoint(x,y,rotation));
+    const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y);
+    return {minX:Math.min(...xs),maxX:Math.max(...xs),minY:Math.min(...ys),maxY:Math.max(...ys),
+      width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};
+  }
+  function viewWorldAt(sx,sy){
+    return unrotatePoint((sx-view.offsetX)/scale(),(sy-view.offsetY)/scale());
+  }
   const toWorld=(clientX,clientY)=>{
     const r=canvas.getBoundingClientRect();
-    return {x:(clientX-r.left-view.offsetX)/scale(),y:(clientY-r.top-view.offsetY)/scale()};
+    return viewWorldAt(clientX-r.left,clientY-r.top);
   };
   const snapCell=p=>({x:minmax(Math.round(p.x),0,project.cols),y:minmax(Math.round(p.y),0,project.rows)});
-  const toScreen=p=>({x:view.offsetX+p.x*scale(),y:view.offsetY+p.y*scale()});
+  const toScreen=p=>{
+    const r=quarterTurnPoint(p.x,p.y);
+    return {x:view.offsetX+r.x*scale(),y:view.offsetY+r.y*scale()};
+  };
+  function rotateMap(steps){
+    view.rotation=((view.rotation+steps)%4+4)%4;
+    $('mapRotationLabel').textContent=`${view.rotation*90}°`;
+    fitView();
+  }
   function fitView(){
     if(!view.width||!view.height)return;
-    view.zoom=minmax(Math.min((view.width-70)/(project.cols*CELL_PX),(view.height-70)/(project.rows*CELL_PX)),.1,5);
-    view.offsetX=(view.width-project.cols*scale())/2;
-    view.offsetY=(view.height-project.rows*scale())/2;
+    const b=rotatedSiteBounds();
+    view.zoom=minmax(Math.min((view.width-70)/(b.width*CELL_PX),(view.height-70)/(b.height*CELL_PX)),.1,5);
+    view.offsetX=(view.width-b.width*scale())/2-b.minX*scale();
+    view.offsetY=(view.height-b.height*scale())/2-b.minY*scale();
     view.fitted=true;drawSoon();
   }
   function centerOn(o){
@@ -1171,12 +1222,14 @@
     if(o.type==='lot'||o.type==='box'){x=o.x+o.w/2;y=o.y+o.h/2;}
     else if(['wall','door','shutter'].includes(o.type)){x=(o.x1+o.x2)/2;y=(o.y1+o.y2)/2;}
     else{x=o.x;y=o.y;}
-    view.offsetX=view.width/2-x*scale();view.offsetY=view.height/2-y*scale();drawSoon();
+    const rotated=quarterTurnPoint(x,y);
+    view.offsetX=view.width/2-rotated.x*scale();
+    view.offsetY=view.height/2-rotated.y*scale();drawSoon();
   }
   function zoomAt(factor,sx,sy){
-    const old=scale();const wx=(sx-view.offsetX)/old,wy=(sy-view.offsetY)/old;
+    const old=scale(),rotatedX=(sx-view.offsetX)/old,rotatedY=(sy-view.offsetY)/old;
     view.zoom=minmax(view.zoom*factor,.1,7);
-    view.offsetX=sx-wx*scale();view.offsetY=sy-wy*scale();
+    view.offsetX=sx-rotatedX*scale();view.offsetY=sy-rotatedY*scale();
     view.fitted=false;drawSoon();
   }
   function resizeCanvas(){
@@ -1187,14 +1240,15 @@
     const pixelW=Math.round(width*dpr),pixelH=Math.round(height*dpr);
     if(width===view.width&&height===view.height&&canvas.width===pixelW&&canvas.height===pixelH)return;
     const oldW=view.width,oldH=view.height;
-    const centreX=(oldW/2-view.offsetX)/scale(),centreY=(oldH/2-view.offsetY)/scale();
+    const oldCentre=viewWorldAt(oldW/2,oldH/2);
     view.width=width;view.height=height;
     if(canvas.width!==pixelW)canvas.width=pixelW;
     if(canvas.height!==pixelH)canvas.height=pixelH;
     if(view.fitted)fitView();
     else{
-      view.offsetX=width/2-centreX*scale();
-      view.offsetY=height/2-centreY*scale();
+      const centre=quarterTurnPoint(oldCentre.x,oldCentre.y);
+      view.offsetX=width/2-centre.x*scale();
+      view.offsetY=height/2-centre.y*scale();
       drawSoon();
     }
   }
@@ -1448,9 +1502,11 @@
       const box=groupBounds(lots);
       if(box){
         const w=Math.max(1,box.maxX-box.minX),h=Math.max(1,box.maxY-box.minY);
-        view.zoom=minmax(Math.min((view.width-140)/(w*CELL_PX),(view.height-140)/(h*CELL_PX)),.15,5);
-        view.offsetX=view.width/2-(box.minX+box.maxX)/2*scale();
-        view.offsetY=view.height/2-(box.minY+box.maxY)/2*scale();
+        const rw=view.rotation%2?h:w,rh=view.rotation%2?w:h;
+        view.zoom=minmax(Math.min((view.width-140)/(rw*CELL_PX),(view.height-140)/(rh*CELL_PX)),.15,5);
+        const rotated=quarterTurnPoint((box.minX+box.maxX)/2,(box.minY+box.maxY)/2);
+        view.offsetX=view.width/2-rotated.x*scale();
+        view.offsetY=view.height/2-rotated.y*scale();
         view.fitted=false;
       }
       drawSoon();
@@ -1481,7 +1537,7 @@
   }
   function paint(c,width,height,ox,oy,px,options={}){
     c.fillStyle='#e8edf4';c.fillRect(0,0,width,height);
-    c.save();c.translate(ox,oy);c.scale(px,px);
+    c.save();c.translate(ox,oy);c.rotate(((options.rotation||0)%4)*Math.PI/2);c.scale(px,px);
     c.fillStyle='#fafcfe';c.fillRect(0,0,project.cols,project.rows);
     c.save();c.beginPath();c.rect(0,0,project.cols,project.rows);c.clip();
     if(options.grid!==false){
@@ -1531,7 +1587,7 @@
     const dpr=canvas.width/Math.max(view.width,1);
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,view.width,view.height);
-    paint(ctx,view.width,view.height,view.offsetX,view.offsetY,scale());
+    paint(ctx,view.width,view.height,view.offsetX,view.offsetY,scale(),{rotation:view.rotation});
     $('zoomLabel').textContent=`${Math.round(view.zoom*100)}%`;
     const measure=project.cellMeters*5;
     const scaleLength=Math.max(1,5*scale());
@@ -1541,10 +1597,13 @@
   }
   function exportPNG(){
     const padding=60;
-    const px=Math.min(45,Math.max(8,2200/Math.max(project.cols,project.rows)));
-    const width=Math.round(project.cols*px+padding*2),height=Math.round(project.rows*px+padding*2);
+    const bounds=rotatedSiteBounds(view.rotation);
+    const px=Math.min(45,Math.max(8,2200/Math.max(bounds.width,bounds.height)));
+    const width=Math.round(bounds.width*px+padding*2),height=Math.round(bounds.height*px+padding*2);
     const copy=document.createElement('canvas');copy.width=width;copy.height=height;
-    const c=copy.getContext('2d');paint(c,width,height,padding,padding,px,{export:true});
+    const c=copy.getContext('2d');
+    const ox=padding-bounds.minX*px,oy=padding-bounds.minY*px;
+    paint(c,width,height,ox,oy,px,{export:true,rotation:view.rotation});
     c.fillStyle='#1f354e';c.textAlign='left';c.font='bold 22px system-ui,sans-serif';
     c.fillText(project.name.slice(0,95),padding,32);
     c.font='14px system-ui,sans-serif';c.textAlign='right';
@@ -1557,15 +1616,16 @@
     const ids=target.ids.filter(id=>project.objects.some(o=>o.type==='lot'&&o.id===id));
     if(!ids.length)throw Error('No matching lots are drawn on this site.');
     const padding=72;
-    const px=Math.max(3,Math.min(48,(maxSize-padding*2)/Math.max(project.cols,project.rows)));
-    const width=Math.round(project.cols*px+padding*2);
-    const height=Math.round(project.rows*px+padding*2);
+    const bounds=rotatedSiteBounds(view.rotation);
+    const px=Math.max(3,Math.min(48,(maxSize-padding*2)/Math.max(bounds.width,bounds.height)));
+    const width=Math.round(bounds.width*px+padding*2);
+    const height=Math.round(bounds.height*px+padding*2);
     const out=document.createElement('canvas');
     out.width=width;out.height=height;
     const context=out.getContext('2d');
     if(!context)throw Error('Cannot create the highlighted map image in this browser.');
-    paint(context,width,height,padding,padding,px,{export:true,grid:true,
-      showText:true,highlightIds:ids});
+    paint(context,width,height,padding-bounds.minX*px,padding-bounds.minY*px,px,{export:true,grid:true,
+      showText:true,highlightIds:ids,rotation:view.rotation});
     context.textAlign='left';context.fillStyle='#1f354e';
     context.font='bold 21px system-ui,sans-serif';
     context.fillText(project.name.slice(0,75),padding,30,Math.max(150,width-padding*2));
@@ -1701,8 +1761,9 @@
     const pts=[...pointers.values()].slice(0,2);
     const a=pts[0],b=pts[1];const midpoint={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
     const rect=canvas.getBoundingClientRect();midpoint.x-=rect.left;midpoint.y-=rect.top;
+    const anchor=viewWorldAt(midpoint.x,midpoint.y);
     pinch={initialDistance:Math.max(8,Math.hypot(a.x-b.x,a.y-b.y)),initialZoom:view.zoom,
-      worldX:(midpoint.x-view.offsetX)/scale(),worldY:(midpoint.y-view.offsetY)/scale()};
+      worldX:anchor.x,worldY:anchor.y};
     cancelGroupDrag(drawing);
     drawing=null;
   }
@@ -1713,7 +1774,8 @@
     const midX=(a.x+b.x)/2-r.left,midY=(a.y+b.y)/2-r.top;
     const distance=Math.max(8,Math.hypot(a.x-b.x,a.y-b.y));
     view.zoom=minmax(pinch.initialZoom*distance/pinch.initialDistance,.1,7);
-    view.offsetX=midX-pinch.worldX*scale();view.offsetY=midY-pinch.worldY*scale();
+    const anchored=quarterTurnPoint(pinch.worldX,pinch.worldY);
+    view.offsetX=midX-anchored.x*scale();view.offsetY=midY-anchored.y*scale();
     view.fitted=false;drawSoon();
   }
   function onPointerDown(ev){
@@ -2301,6 +2363,73 @@
  toast(project.showText===false?'Map text hidden (data preserved)':'Map text visible');
 }
 
+  function printBuyerGroups(){
+    const groups=new Map();
+    const report=adminReport();
+    const reportIndex=report?ADMIN().indexReport(report):null;
+    for(const lot of project.objects.filter(o=>o.type==='lot')){
+      const invoice=effectiveInvoiceFor(lot);
+      const key=invoice?'invoice:'+invoice:'unlinked:'+lot.id;
+      if(!groups.has(key))groups.set(key,{invoice,lots:[],rows:[],drawn:[],buyer:'',mobile:'',telephone:'',email:'',username:'',recoveryName:'',recoveryPhone:'',recoveryEmail:'',recoveryCompany:''});
+      const item=groups.get(key);
+      item.drawn.push(lot);
+      item.lots.push(String(lot.number||'—'));
+      const found=reportForLot(lot)?.row;
+      // Never mix two buyers if a manual invoice override disagrees with
+      // today's report. Buyer data is added only for matching invoices.
+      const matching=found&&ADMIN().invoiceKey(found['dbo.RWX_Invoices::Id'])===invoice;
+      if(matching)item.rows.push(found);
+      const booking=collectionForLot(lot);
+      if(!item.recoveryName&&booking.recoveryName)item.recoveryName=booking.recoveryName;
+      if(!item.recoveryPhone&&booking.recoveryPhone)item.recoveryPhone=booking.recoveryPhone;
+      if(!item.recoveryEmail&&booking.recoveryEmail)item.recoveryEmail=booking.recoveryEmail;
+      if(!item.recoveryCompany&&booking.recoveryCompany)item.recoveryCompany=booking.recoveryCompany;
+    }
+    for(const item of groups.values()){
+      if(item.invoice&&reportIndex?.byInvoice?.has(item.invoice)){
+        const rows=reportIndex.byInvoice.get(item.invoice);
+        item.rows=rows;
+        for(const row of rows)item.lots.push(String(row.LotNumber||'—'));
+      }
+      item.lots=[...new Set(item.lots)].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+      const row=item.rows[0];
+      if(row){
+        item.buyer=ADMIN().asText(row['dbo.RWX_Invoices::Full Billing Name']);
+        item.mobile=ADMIN().asText(row['mobile::StringNativeValue']);
+        item.telephone=ADMIN().asText(row['tel::StringNativeValue']);
+        const username=ADMIN().asText(row['dbo.RWX_Users 2::UserName']);
+        // The report has a username field, NOT a dedicated email field.
+        item.email=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)?username:'';
+        item.username=item.email?'':username;
+      }
+    }
+    return [...groups.values()].sort((a,b)=>
+      String(a.lots[0]||'').localeCompare(String(b.lots[0]||''),undefined,{numeric:true}));
+  }
+  function buyerPrintCard(item){
+    const contacts=[item.mobile,item.telephone].filter(Boolean).join(' / ');
+    const missingEmail=item.email?'': 'Buyer email not supplied in Excel';
+    return `<article class="buyer-print-card">
+      <h3>${e(item.buyer||'Buyer not supplied')} <span>· ${e(item.invoice?'Invoice '+item.invoice:'Unlinked lot')}</span></h3>
+      <p class="buyer-lots"><strong>Lots:</strong> ${e(item.lots.join(', '))}</p>
+      <p><strong>Telephone:</strong> ${e(contacts||'Not supplied')}</p>
+      <p><strong>Buyer email:</strong> ${e(item.email||missingEmail)}</p>
+      ${item.username?`<p><strong>Username:</strong> ${e(item.username)}</p>`:''}
+      ${item.recoveryName||item.recoveryCompany||item.recoveryPhone||item.recoveryEmail?
+        `<p class="buyer-recovery"><strong>Recovery:</strong> ${e([item.recoveryName,item.recoveryCompany,item.recoveryPhone,item.recoveryEmail].filter(Boolean).join(' · '))}</p>`:''}
+    </article>`;
+  }
+  function printBuyerSidebar(items,total,remaining){
+    return `<header><strong>BUYER / INVOICE DIRECTORY</strong><small>${total} buyer group${total===1?'':'s'} · contact details</small></header>
+      ${items.length?items.map(buyerPrintCard).join(''):'<p class="buyer-side-empty">No drawn lots with buyer information.</p>'}
+      ${remaining?`<p class="buyer-more">+${remaining} further buyer group${remaining===1?'':'s'} on following page${remaining===1?'':'s'}.</p>`:''}`;
+  }
+  function printBuyerContinuation(items){
+    return `<header class="directory-head"><h2>${e(project.name)} · Buyer contact directory (continued)</h2>
+      <p>Confidential · locally generated · ${e(new Date().toLocaleString('en-GB'))}</p>
+      <p>Contact groups are listed by invoice, with associated lot numbers. Buyer email appears only when supplied as an email address in the username column.</p></header>
+      <div class="buyer-print-continuation">${items.map(buyerPrintCard).join('')}</div>`;
+  }
   function printContactDirectory(){
     const lots=project.objects.filter(o=>o.type==='lot').sort((a,b)=>
       ADMIN().lotKey(a.number).localeCompare(ADMIN().lotKey(b.number),undefined,{numeric:true}));
@@ -2337,6 +2466,7 @@
     $('printText').checked=project.showText!==false;
     $('printGrid').checked=true;
     $('printContact').checked=true;
+    $('printBuyerLayout').value='buyerSide';
     for(const option of document.querySelectorAll('.print-site-option')){
       option.hidden=printView==='schedule';
     }
@@ -2351,6 +2481,7 @@
     $('printPage').hidden=isSchedule;
     $('printDirectory').hidden=isSchedule;
     $('printSchedule').hidden=!isSchedule;
+    $('printBuyerSide').hidden=true;
     $('printDialog').classList.toggle('mode-schedule',isSchedule);
     if(isSchedule){
       $('printSchedule').innerHTML=printScheduleContent();
@@ -2359,24 +2490,36 @@
     }
     const showText=$('printText').checked,grid=$('printGrid').checked;
     const contact=$('printContact').checked;
+    const buyerSide=contact&&$('printBuyerLayout').value==='buyerSide';
+    const groups=buyerSide?printBuyerGroups():[];
+    const visibleCount=paper==='A3'?6:4;
+    const sideGroups=groups.slice(0,visibleCount),overflow=groups.slice(visibleCount);
+    $('printPage').classList.toggle('with-buyer-side',buyerSide);
+    $('printBuyerSide').hidden=!buyerSide;
+    $('printBuyerSide').innerHTML=buyerSide?printBuyerSidebar(sideGroups,groups.length,overflow.length):'';
+    $('printDirectory').hidden=!contact||(buyerSide&&overflow.length===0);
+    $('printDirectory').innerHTML=contact?(buyerSide?
+      (overflow.length?printBuyerContinuation(overflow):''):printContactDirectory()):'';
     const mm=paper==='A3'?[297,420]:[210,297];
     const mmW=orientation==='landscape'?mm[1]:mm[0],mmH=orientation==='landscape'?mm[0]:mm[1];
     const width=Math.max(1,Math.round((mmW-24)*5)),height=Math.max(1,Math.round((mmH-52)*5));
-    const render=document.createElement('canvas');render.width=width;render.height=height;
+    const mapWidth=buyerSide?Math.round(width*.59):width;
+    const render=document.createElement('canvas');render.width=mapWidth;render.height=height;
     const c=render.getContext('2d');
-    const px=Math.min((width-10)/project.cols,(height-10)/project.rows);
-    const ox=(width-project.cols*px)/2,oy=(height-project.rows*px)/2;
-    paint(c,width,height,ox,oy,px,{export:true,grid,showText,printContacts:contact});
+    const bounds=rotatedSiteBounds(view.rotation);
+    const px=Math.min((mapWidth-14)/bounds.width,(height-14)/bounds.height);
+    const ox=(mapWidth-bounds.width*px)/2-bounds.minX*px;
+    const oy=(height-bounds.height*px)/2-bounds.minY*px;
+    paint(c,mapWidth,height,ox,oy,px,{export:true,grid,showText,
+      printContacts:contact&&!buyerSide,rotation:view.rotation});
     $('printMap').src=render.toDataURL('image/png');
     $('printPage').style.aspectRatio=`${mmW} / ${mmH}`;
     $('printSiteName').textContent=project.name;
-    $('printMeta').textContent=`${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m · ${paper} ${orientation}`;
+    $('printMeta').textContent=`${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m · ${paper} ${orientation} · rotation ${view.rotation*90}°`;
     $('printScale').textContent=`1 grid square = ${fmt(project.cellMeters)} m · diagram fitted to page (not a measured print scale)`;
     const lots=project.objects.filter(x=>x.type==='lot');
     $('printCounts').textContent=`Lots: ${lots.length} · Cleared: ${lots.filter(x=>x.status==='cleared').length}`;
-    $('printDirectory').hidden=!contact;
-    $('printDirectory').innerHTML=contact?printContactDirectory():'';
-    $('printSheetSize').textContent=`${paper} ${orientation} · contacts ${contact?'included':'hidden'} · grid ${grid?'on':'off'}`;
+    $('printSheetSize').textContent=`${paper} ${orientation} · ${buyerSide?'buyer directory beside plan':contact?'lot directory':'no contacts'} · grid ${grid?'on':'off'}`;
   }
 
   function printPlan() {
@@ -2395,6 +2538,10 @@
     $('settingsResetBtn').addEventListener('click',resetDisplayPreferences);
     $('fullscreenMapBtn').addEventListener('click',toggleMapFullscreen);
     $('fullscreenToolsBtn').addEventListener('click',toggleFullscreenTools);
+    $('fullscreenDrawerClose').addEventListener('click',()=>selectObject(null));
+    $('rotateMapLeft').addEventListener('click',()=>rotateMap(-1));
+    $('rotateMapRight').addEventListener('click',()=>rotateMap(1));
+    $('rotateMapReset').addEventListener('click',()=>rotateMap(-view.rotation));
     document.addEventListener('fullscreenchange',refreshFullscreenPresentation);
     document.addEventListener('fullscreenerror',()=>{
       if(!isMapFullscreen())toast('Browser full screen was unavailable. Try Focus Map instead.');
@@ -2464,7 +2611,7 @@
     $('textToggleBtn').addEventListener('click',setTextVisibility);
     $('printPreviewBtn').addEventListener('click',openPrintPreview);
     $('printCloseBtn').addEventListener('click',()=>$('printDialog').close());
-    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact']){
+    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact','printBuyerLayout']){
       $(id).addEventListener('change',renderPrintPreview);
     }
     $('printGoBtn').addEventListener('click',printPlan);
