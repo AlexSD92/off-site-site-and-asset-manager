@@ -83,33 +83,35 @@
 
       <main class="workspace" id="mapWorkspace" aria-label="Site drawing and map controls">
         <div class="canvas-toolbar">
-          <div class="canvas-title"><span class="canvas-live"></span><strong id="canvasTitle">Site Layout</strong><span id="siteDimensions">48 × 32 m</span></div>
-          <div class="canvas-actions">
-            <div class="map-layout-buttons" role="group" aria-label="Show or hide map panels">
-              <button class="mini-btn map-layout-toggle" id="toggleToolsBtn" type="button" aria-controls="mapToolSidebar" aria-expanded="true" title="Show or hide drawing tools">☰ Tools</button>
-              <button class="mini-btn map-layout-toggle" id="toggleDetailsBtn" type="button" aria-controls="mapDetailsSidebar" aria-expanded="true" title="Show or hide lot details">▣ Details</button>
-              <button class="mini-btn map-layout-toggle" id="focusMapBtn" type="button" aria-pressed="false" title="Hide both sidebars without entering browser full screen">▣ Focus</button>
-              <button class="mini-btn map-fullscreen-btn" id="fullscreenMapBtn" type="button" aria-pressed="false" title="Full screen map (Esc to exit)">⛶ Full Screen</button>
-              <button class="mini-btn fullscreen-tools-btn" id="fullscreenToolsBtn" type="button" aria-expanded="true" aria-controls="fullscreenToolstrip" title="Show or hide drawing tools in full screen">☰ Tools</button>
+          <div class="canvas-toolbar-top">
+            <div class="canvas-title"><span class="canvas-live"></span><strong id="canvasTitle">Site Layout</strong><span id="siteDimensions">48 × 32 m</span></div>
+            <div class="canvas-toolbar-primary">
+              <div class="map-layout-buttons" role="group" aria-label="Map layout">
+    <button class="mini-btn map-layout-toggle" id="toggleToolsBtn" type="button" aria-controls="mapToolSidebar" aria-expanded="true" title="Show or hide drawing tools">☰ Tools</button>
+    <button class="mini-btn map-layout-toggle" id="toggleDetailsBtn" type="button" aria-controls="mapDetailsSidebar" aria-expanded="true" title="Show or hide lot details">▣ Details</button>
+    <button class="mini-btn map-layout-toggle" id="focusMapBtn" type="button" aria-pressed="false" title="Hide both sidebars without entering browser full screen">▣ Focus</button>
+    <button class="mini-btn map-fullscreen-btn" id="fullscreenMapBtn" type="button" aria-pressed="false" title="Full screen map (Esc to exit)">⛶ Full Screen</button>
+    <button class="mini-btn fullscreen-tools-btn" id="fullscreenToolsBtn" type="button" aria-expanded="true" aria-controls="fullscreenToolstrip" title="Show or hide drawing tools in full screen">☰ Tools</button>
+  </div>
+              <button class="mini-btn print-open-btn" id="printPreviewBtn" type="button" title="Print preview and save as PDF">Print preview</button>
             </div>
-            <button class="mini-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
-            <button class="mini-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
-            <span class="toolbar-separator"></span>
-            <button class="mini-btn" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
-            <span id="zoomLabel" class="zoom-label">100%</span>
-            <button class="mini-btn" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
-            <div class="map-rotation-controls" role="group" aria-label="Rotate map view without moving lots">
-              <button class="mini-btn" id="rotateMapLeft" type="button" title="Rotate map 90 degrees anticlockwise" aria-label="Rotate map 90 degrees anticlockwise">↶ 90°</button>
-              <span id="mapRotationLabel" class="map-rotation-label" aria-live="polite">0°</span>
-              <button class="mini-btn" id="rotateMapRight" type="button" title="Rotate map 90 degrees clockwise" aria-label="Rotate map 90 degrees clockwise">↷ 90°</button>
-              <button class="mini-btn" id="rotateMapReset" type="button" title="Reset map orientation" aria-label="Reset map orientation to zero degrees">0°</button>
-            </div>
-            <button class="mini-btn fit-btn" id="fitBtn" title="Fit site to view">Fit</button>
-            <button class="mini-btn toolbar-move-all" id="moveAllBtn" type="button" aria-pressed="false" title="Move the complete drawing (A / Ctrl+A)">Move All</button>
-          <span class="toolbar-separator"></span>
-          <label class="text-scale-ctrl" for="textScaleInput">Text <input id="textScaleInput" type="number" min="50" max="250" step="5" value="100" aria-label="Size of all map text in percent"><span>%</span></label>
-          <button class="mini-btn map-text-toggle" id="textToggleBtn" type="button" aria-pressed="true" title="Show or hide all text on the plan">Aa · Show</button>
-          <button class="mini-btn print-open-btn" id="printPreviewBtn" type="button" title="Print preview and save as PDF">Print preview</button>
+          </div>
+          <div class="canvas-actions" role="toolbar" aria-label="Drawing view and editing controls">
+            <div class="toolbar-group" role="group" aria-label="Edit history"><button class="mini-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+ <button class="mini-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button></div>
+            <div class="toolbar-group" role="group" aria-label="Map zoom"><button class="mini-btn" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+ <span id="zoomLabel" class="zoom-label">100%</span>
+ <button class="mini-btn" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+ <button class="mini-btn fit-btn" id="fitBtn" title="Fit site to view">Fit</button></div>
+            <div class="toolbar-group" role="group" aria-label="Map orientation"><div class="map-rotation-controls" role="group" aria-label="Rotate map view without moving lots">
+ <button class="mini-btn" id="rotateMapLeft" type="button" title="Rotate map 90 degrees anticlockwise" aria-label="Rotate map 90 degrees anticlockwise">↶ 90°</button>
+ <span id="mapRotationLabel" class="map-rotation-label" aria-live="polite">0°</span>
+ <button class="mini-btn" id="rotateMapRight" type="button" title="Rotate map 90 degrees clockwise" aria-label="Rotate map 90 degrees clockwise">↷ 90°</button>
+ <button class="mini-btn" id="rotateMapReset" type="button" title="Reset map orientation" aria-label="Reset map orientation to zero degrees">Reset</button>
+ </div></div>
+            <div class="toolbar-group" role="group" aria-label="Selection and text"><button class="mini-btn toolbar-move-all" id="moveAllBtn" type="button" aria-pressed="false" title="Move the complete drawing (A / Ctrl+A)">Move All</button>
+ <label class="text-scale-ctrl" for="textScaleInput">Text <input id="textScaleInput" type="number" min="50" max="250" step="5" value="100" aria-label="Size of all map text in percent"><span>%</span></label>
+ <button class="mini-btn map-text-toggle" id="textToggleBtn" type="button" aria-pressed="true" title="Show or hide all text on the plan">Aa · Show</button></div>
           </div>
         </div>
         <aside id="fullscreenDetailsDrawer" class="fullscreen-details-drawer" aria-label="Selected map object details" hidden>
@@ -245,12 +247,16 @@
     <label>Layout <select id="printOrientation"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label>
     <label class="print-check print-site-option"><input id="printText" type="checkbox" checked> Show text</label>
     <label class="print-check print-site-option"><input id="printGrid" type="checkbox" checked> Show grid</label>
-    <label class="print-check print-site-option"><input id="printContact" type="checkbox" checked> Include buyer contacts</label>
-    <label class="print-site-option print-contact-layout-label" for="printBuyerLayout">Contact layout
+    <label class="print-check print-site-option"><input id="printContact" type="checkbox" checked> Include contact pages</label>
+    <label class="print-site-option print-contact-layout-label" for="printBuyerLayout">Contacts format
       <select id="printBuyerLayout">
-        <option value="buyerSide">Buyer directory beside map</option>
+        <option value="buyerGroups">Grouped by buyer / invoice</option>
         <option value="lotDirectory">Detailed lot directory</option>
       </select>
+    </label>
+    <label class="print-check print-site-option print-exclude-collected" for="printExcludeCollected"
+      title="Contact pages only: exclude an invoice if all its Excel lots are uniquely matched to greened-off lots on the map. The map page is never filtered.">
+      <input id="printExcludeCollected" type="checkbox"> Exclude fully collected invoices
     </label>
     <button id="printGoBtn" class="btn btn-primary" type="button">Print / Save PDF</button>
   </div>
@@ -259,7 +265,6 @@
       <header class="print-page-header"><div><strong id="printSiteName"></strong><small id="printMeta"></small></div><b>YARDMAP · SITE PLAN</b></header>
       <div class="print-page-body" id="printPageBody">
         <div class="print-map-area"><img id="printMap" alt="Site plan for printing"></div>
-        <aside class="print-buyer-side" id="printBuyerSide" aria-label="Buyer contact directory" hidden></aside>
       </div>
       <footer class="print-page-footer"><span id="printScale"></span><span id="printCounts"></span></footer>
     </section>

@@ -1237,3 +1237,195 @@ body.map-fullscreen-active{overflow:hidden!important}
  :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .fullscreen-details-drawer:not([hidden]){top:105px}
  :is(.workspace:fullscreen,.workspace.map-fullscreen-fallback):has(.fullscreen-toolstrip.is-collapsed) .fullscreen-details-drawer:not([hidden]){top:56px}
 }
+
+/* 2026-11: compact, predictable two-row map toolbar.
+   One group per purpose; never wrap a lone Print button onto its own row.
+   Narrow workspaces scroll the controls horizontally rather than shrink
+   or spill buttons across the schematic. */
+.canvas-toolbar{
+ display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+ align-items:stretch!important;justify-content:stretch!important;
+ gap:5px!important;padding:7px 10px!important;min-height:0!important;
+}
+.canvas-toolbar-top{
+ min-width:0;display:flex;align-items:center;justify-content:space-between;
+ gap:9px;min-height:38px
+}
+.canvas-toolbar-top>.canvas-title{
+ display:flex;align-items:center;gap:8px;flex:0 0 auto;
+ max-width:35%;min-width:0;overflow:hidden
+}
+.canvas-toolbar-top>.canvas-title strong{
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px
+}
+.canvas-toolbar-top>.canvas-title #siteDimensions{
+ font-size:10px;white-space:nowrap
+}
+.canvas-toolbar-primary{
+ display:flex;align-items:center;justify-content:flex-end;
+ gap:7px;min-width:0;flex:1 1 auto;overflow-x:auto;overflow-y:hidden;
+ overscroll-behavior-x:contain;scrollbar-width:thin;
+ padding:1px 0 3px
+}
+.canvas-toolbar-primary .map-layout-buttons{
+ flex:0 0 auto!important;display:flex!important;align-items:center;
+ justify-content:flex-start!important;gap:4px;flex-wrap:nowrap!important;
+ padding:0 8px 0 0!important;margin:0!important;
+ border-right:1px solid #d6e1ec!important;border-bottom:0!important
+}
+.canvas-toolbar-primary .mini-btn{flex:0 0 auto;min-height:34px;white-space:nowrap}
+.canvas-toolbar-primary .print-open-btn{
+ flex:0 0 auto!important;min-height:35px;
+ padding:7px 11px;font-weight:850
+}
+.canvas-toolbar>.canvas-actions{
+ display:flex!important;align-items:center!important;justify-content:flex-start!important;
+ flex-wrap:nowrap!important;gap:7px!important;min-width:0;width:100%;
+ overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+ scrollbar-width:thin;padding:4px 0 3px!important;
+ border-top:1px solid #e5ebf2
+}
+.canvas-toolbar .toolbar-group{
+ flex:0 0 auto;display:inline-flex;gap:4px;align-items:center;
+ min-height:35px;padding-right:8px;margin-right:1px;
+ border-right:1px solid #d8e3ed
+}
+.canvas-toolbar .toolbar-group:last-child{border-right:0;padding-right:0}
+.canvas-toolbar .toolbar-group .mini-btn{
+ flex:0 0 auto;min-height:34px;padding:5px 9px;
+ line-height:1.25;font-size:12px;white-space:nowrap
+}
+.canvas-toolbar .toolbar-group .zoom-label{min-width:36px}
+.canvas-toolbar .toolbar-group .map-rotation-controls{
+ display:inline-flex;gap:4px;align-items:center;flex:0 0 auto
+}
+.canvas-toolbar .toolbar-group .map-rotation-label{min-width:28px}
+.canvas-toolbar .toolbar-group .text-scale-ctrl{
+ display:inline-flex;align-items:center;gap:4px;
+ font-size:12px;white-space:nowrap;margin:0;flex:0 0 auto
+}
+.canvas-toolbar .toolbar-group .text-scale-ctrl input{
+ width:54px;min-width:54px;height:34px;min-height:34px;
+ padding:4px 5px;font-size:12px
+}
+.canvas-toolbar .toolbar-group .map-text-toggle{
+ min-width:82px;white-space:nowrap
+}
+.canvas-toolbar .canvas-actions .toolbar-separator{display:none}
+.theme-dark .canvas-toolbar>.canvas-actions{border-color:#42586f}
+.theme-dark .canvas-toolbar .toolbar-group{border-color:#49617b}
+.theme-dark .canvas-toolbar-primary .map-layout-buttons{border-color:#49617b!important}
+@media(max-width:1050px){
+ .canvas-toolbar-top>.canvas-title{max-width:160px}
+ .canvas-toolbar-top>.canvas-title #siteDimensions{display:none}
+ .canvas-toolbar-primary{justify-content:flex-start}
+}
+@media(max-width:720px){
+ .canvas-toolbar{padding:6px!important}
+ .canvas-toolbar-top{gap:5px}
+ .canvas-toolbar-top>.canvas-title{max-width:112px}
+ .canvas-toolbar-top>.canvas-title strong{font-size:11px}
+ .canvas-toolbar .toolbar-group{gap:3px;padding-right:5px}
+ .canvas-toolbar .toolbar-group .mini-btn{font-size:11px;padding:5px 7px}
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar{
+ display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+ gap:3px!important;padding:5px 9px!important
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar-top{
+ min-height:36px
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar>.canvas-actions{
+ flex:0 0 auto!important;width:100%!important;
+ justify-content:flex-start!important;
+ border-color:#cbd9e7;padding:3px 0!important
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar-primary .map-layout-buttons{
+ flex:0 0 auto!important;justify-content:flex-start!important;
+ border-bottom:0!important
+}
+:is(.workspace:fullscreen,.workspace.map-fullscreen-fallback) .canvas-toolbar-primary .print-open-btn{
+ display:inline-flex!important
+}
+/* Map print is its own first sheet. Contacts flow onto the following
+   sheets rather than competing for space inside the lot geometry. */
+.print-page-body{display:flex;flex:1 1 auto;min-height:0;gap:0;padding:10px 0}
+.print-page-body>.print-map-area{
+ flex:1 1 100%!important;width:100%!important;min-width:0!important;
+ max-width:100%!important;overflow:hidden
+}
+.print-page-body>.print-map-area img{width:100%;height:100%;max-height:100%;object-fit:contain}
+.print-contact-layout-label{white-space:normal}
+.print-exclude-collected{
+ min-height:35px;display:inline-flex;align-items:center;gap:7px;
+ padding:6px 10px;border:1px solid #c6d9eb;border-radius:8px;
+ background:#f1f7ff;color:#315f8e;font-weight:800;font-size:11px
+}
+.print-exclude-collected input{accent-color:#268157;width:16px;height:16px}
+.print-exclude-collected:has(input:checked){border-color:#71b996;background:#e5f7eb;color:#1b6845}
+.theme-dark .print-exclude-collected{background:#294057;color:#e5f0ff;border-color:#52718e}
+.theme-dark .print-exclude-collected:has(input:checked){background:#1f4c39;color:#c4f2db;border-color:#5b9e76}
+.print-directory{box-sizing:border-box}
+.print-directory .directory-head{margin-bottom:15px}
+.print-directory .directory-head p{line-height:1.5}
+.print-directory .buyer-print-continuation{
+ display:block;columns:2;column-gap:15px;column-fill:balance;
+}
+.print-directory .buyer-print-card{
+ width:100%;box-sizing:border-box;margin:0 0 12px;
+ break-inside:avoid;page-break-inside:avoid
+}
+.print-directory .buyer-print-card h3{font-size:14px}
+.print-directory .buyer-print-card h3 span{font-size:11px}
+.print-directory .buyer-print-card p{font-size:12px;line-height:1.55}
+.buyer-directory-empty{
+ padding:18px;background:#edf7ef;border:1px solid #b6dac3;
+ border-radius:9px;color:#226744;font-size:13px;line-height:1.5
+}
+@media(max-width:650px){
+ .print-directory .buyer-print-continuation{columns:1}
+}
+@media print{
+ .print-page{
+   width:100%!important;min-height:0!important;
+   break-after:auto!important;page-break-after:auto!important;
+   page-break-inside:avoid!important;break-inside:avoid!important
+ }
+ .print-page-body{display:flex!important;gap:0!important;min-height:0!important}
+ .print-page-body>.print-map-area{
+   flex:1 1 100%!important;width:100%!important;max-width:100%!important
+ }
+ .print-directory{
+   width:100%!important;break-before:page!important;page-break-before:always!important;
+   break-inside:auto!important;page-break-inside:auto!important;
+   padding:10mm!important;overflow:visible!important
+ }
+ .print-directory .buyer-print-continuation{
+   display:block!important;columns:2;column-gap:5mm;
+   column-fill:balance;overflow:visible!important
+ }
+ .print-directory .buyer-print-card{
+   display:inline-block;width:100%;break-inside:avoid;page-break-inside:avoid;
+   margin-bottom:3mm;padding:3mm;border:1px solid #cbdce9;
+ }
+ .print-directory .buyer-print-card h3{font-size:11pt!important}
+ .print-directory .buyer-print-card p{font-size:9.5pt!important;line-height:1.45!important}
+ .print-directory .directory-head{break-after:avoid-page;page-break-after:avoid}
+ .print-directory .directory-head h2{font-size:17pt!important}
+ .print-exclude-collected{display:none!important}
+}
+
+/* Print-preview dialog remains scrollable when filters wrap on smaller
+   displays; header and action buttons stay accessible. */
+@media screen{
+ .print-dialog[open]{display:flex;flex-direction:column}
+ .print-dialog[open]>.print-dialog-header,
+ .print-dialog[open]>.print-controls,
+ .print-dialog[open]>.print-dialog-footer{flex:0 0 auto}
+ .print-dialog[open]>.print-stage{
+   display:flex;flex:1 1 auto;flex-direction:column;
+   align-items:center;justify-content:flex-start;gap:18px;
+   height:auto!important;min-height:0!important;
+   overflow-y:auto!important;overflow-x:hidden
+ }
+}

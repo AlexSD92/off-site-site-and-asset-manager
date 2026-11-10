@@ -2419,21 +2419,35 @@
         `<p class="buyer-recovery"><strong>Recovery:</strong> ${e([item.recoveryName,item.recoveryCompany,item.recoveryPhone,item.recoveryEmail].filter(Boolean).join(' · '))}</p>`:''}
     </article>`;
   }
-  function printBuyerSidebar(items,total,remaining){
-    return `<header><strong>BUYER / INVOICE DIRECTORY</strong><small>${total} buyer group${total===1?'':'s'} · contact details</small></header>
-      ${items.length?items.map(buyerPrintCard).join(''):'<p class="buyer-side-empty">No drawn lots with buyer information.</p>'}
-      ${remaining?`<p class="buyer-more">+${remaining} further buyer group${remaining===1?'':'s'} on following page${remaining===1?'':'s'}.</p>`:''}`;
+  // An invoice is fully collected ONLY if every lot listed for it in the
+  // imported daily Excel has a unique matching drawn lot marked 'cleared'.
+  // Unknown/undrawn/duplicate lots keep the invoice in the contact directory.
+  function isFullyCollectedInvoice(group,reportIndex){
+    if(!group?.invoice||!reportIndex?.byInvoice)return false;
+    const rows=reportIndex.byInvoice.get(group.invoice);
+    if(!rows||!rows.length)return false;
+    return rows.every(row=>{
+      const key=ADMIN().lotKey(row.LotNumber);
+      if(!key||reportIndex.duplicates?.has(key))return false;
+      const lot=mappedLotForNumber(row.LotNumber,group.invoice);
+      return !!lot&&lot.status==='cleared';
+    });
   }
-  function printBuyerContinuation(items){
-    return `<header class="directory-head"><h2>${e(project.name)} · Buyer contact directory (continued)</h2>
+  function printBuyerContinuation(items,excluded=0){
+    return `<header class="directory-head"><h2>${e(project.name)} · Buyer / invoice directory</h2>
       <p>Confidential · locally generated · ${e(new Date().toLocaleString('en-GB'))}</p>
-      <p>Contact groups are listed by invoice, with associated lot numbers. Buyer email appears only when supplied as an email address in the username column.</p></header>
-      <div class="buyer-print-continuation">${items.map(buyerPrintCard).join('')}</div>`;
+      <p>${items.length} buyer / invoice group${items.length===1?'':'s'} included${excluded?` · ${excluded} fully collected invoice${excluded===1?'':'s'} excluded`:''}.
+      Each entry lists the buyer, invoice, associated lots and available contact details. Buyer email is only shown when supplied as an email address.</p></header>
+      ${items.length?`<div class="buyer-print-continuation">${items.map(buyerPrintCard).join('')}</div>`:
+       '<p class="buyer-directory-empty">No outstanding buyer groups to list. The site plan on the preceding page remains complete.</p>'}`;
   }
-  function printContactDirectory(){
-    const lots=project.objects.filter(o=>o.type==='lot').sort((a,b)=>
+  function printContactDirectory(excludedInvoices=new Set()){
+    const lots=project.objects.filter(o=>o.type==='lot'&&!excludedInvoices.has(effectiveInvoiceFor(o))).sort((a,b)=>
       ADMIN().lotKey(a.number).localeCompare(ADMIN().lotKey(b.number),undefined,{numeric:true}));
-    if(!lots.length)return '';
+    if(!lots.length){
+      return `<header class="directory-head"><h2>${e(project.name)} · Lot contact directory</h2></header>
+        <p class="buyer-directory-empty">No outstanding mapped lots remain in this contact list. The full site plan is on the preceding page.</p>`;
+    }
     const rows=lots.map(lot=>{
       const row=reportForLot(lot)?.row;
       const booking=collectionForLot(lot);
@@ -2466,7 +2480,8 @@
     $('printText').checked=project.showText!==false;
     $('printGrid').checked=true;
     $('printContact').checked=true;
-    $('printBuyerLayout').value='buyerSide';
+    $('printBuyerLayout').value='buyerGroups';
+    $('printExcludeCollected').checked=false;
     for(const option of document.querySelectorAll('.print-site-option')){
       option.hidden=printView==='schedule';
     }
@@ -2481,7 +2496,6 @@
     $('printPage').hidden=isSchedule;
     $('printDirectory').hidden=isSchedule;
     $('printSchedule').hidden=!isSchedule;
-    $('printBuyerSide').hidden=true;
     $('printDialog').classList.toggle('mode-schedule',isSchedule);
     if(isSchedule){
       $('printSchedule').innerHTML=printScheduleContent();
@@ -2489,29 +2503,37 @@
       return;
     }
     const showText=$('printText').checked,grid=$('printGrid').checked;
-    const contact=$('printContact').checked;
-    const buyerSide=contact&&$('printBuyerLayout').value==='buyerSide';
-    const groups=buyerSide?printBuyerGroups():[];
-    const visibleCount=paper==='A3'?6:4;
-    const sideGroups=groups.slice(0,visibleCount),overflow=groups.slice(visibleCount);
-    $('printPage').classList.toggle('with-buyer-side',buyerSide);
-    $('printBuyerSide').hidden=!buyerSide;
-    $('printBuyerSide').innerHTML=buyerSide?printBuyerSidebar(sideGroups,groups.length,overflow.length):'';
-    $('printDirectory').hidden=!contact||(buyerSide&&overflow.length===0);
-    $('printDirectory').innerHTML=contact?(buyerSide?
-      (overflow.length?printBuyerContinuation(overflow):''):printContactDirectory()):'';
+    const contacts=$('printContact').checked;
+    const excludeCollected=contacts&&$('printExcludeCollected').checked;
+    $('printBuyerLayout').disabled=!contacts;
+    $('printExcludeCollected').disabled=!contacts;
+    const format=$('printBuyerLayout').value==='lotDirectory'?'lotDirectory':'buyerGroups';
+    const allGroups=contacts?printBuyerGroups():[];
+    const report=excludeCollected?adminReport():null;
+    const index=report?ADMIN().indexReport(report):null;
+    const fullyCollected=excludeCollected?
+      allGroups.filter(group=>isFullyCollectedInvoice(group,index)):[];
+    const excludedInvoices=new Set(fullyCollected.map(group=>group.invoice));
+    const results={groups:allGroups.filter(group=>!excludedInvoices.has(group.invoice)),
+      excluded:fullyCollected.length};
+    // Always print the entire map on page one, including greened-off lots.
+    // Contact filtering never modifies the site drawing or exported JSON.
+    $('printPage').classList.remove('with-buyer-side');
+    $('printDirectory').hidden=!contacts;
+    $('printDirectory').innerHTML=contacts?(format==='buyerGroups'
+      ?printBuyerContinuation(results.groups,results.excluded)
+      :printContactDirectory(excludedInvoices)):'';
     const mm=paper==='A3'?[297,420]:[210,297];
     const mmW=orientation==='landscape'?mm[1]:mm[0],mmH=orientation==='landscape'?mm[0]:mm[1];
     const width=Math.max(1,Math.round((mmW-24)*5)),height=Math.max(1,Math.round((mmH-52)*5));
-    const mapWidth=buyerSide?Math.round(width*.59):width;
-    const render=document.createElement('canvas');render.width=mapWidth;render.height=height;
+    const render=document.createElement('canvas');render.width=width;render.height=height;
     const c=render.getContext('2d');
     const bounds=rotatedSiteBounds(view.rotation);
-    const px=Math.min((mapWidth-14)/bounds.width,(height-14)/bounds.height);
-    const ox=(mapWidth-bounds.width*px)/2-bounds.minX*px;
+    const px=Math.min((width-14)/bounds.width,(height-14)/bounds.height);
+    const ox=(width-bounds.width*px)/2-bounds.minX*px;
     const oy=(height-bounds.height*px)/2-bounds.minY*px;
-    paint(c,mapWidth,height,ox,oy,px,{export:true,grid,showText,
-      printContacts:contact&&!buyerSide,rotation:view.rotation});
+    paint(c,width,height,ox,oy,px,{export:true,grid,showText,
+      printContacts:false,rotation:view.rotation});
     $('printMap').src=render.toDataURL('image/png');
     $('printPage').style.aspectRatio=`${mmW} / ${mmH}`;
     $('printSiteName').textContent=project.name;
@@ -2519,7 +2541,7 @@
     $('printScale').textContent=`1 grid square = ${fmt(project.cellMeters)} m · diagram fitted to page (not a measured print scale)`;
     const lots=project.objects.filter(x=>x.type==='lot');
     $('printCounts').textContent=`Lots: ${lots.length} · Cleared: ${lots.filter(x=>x.status==='cleared').length}`;
-    $('printSheetSize').textContent=`${paper} ${orientation} · ${buyerSide?'buyer directory beside plan':contact?'lot directory':'no contacts'} · grid ${grid?'on':'off'}`;
+    $('printSheetSize').textContent=`${paper} ${orientation} · full-page site plan${contacts?` + ${format==='buyerGroups'?'buyer / invoice':'lot'} contact pages`:''}${results.excluded?` · ${results.excluded} fully collected excluded`:''}`;
   }
 
   function printPlan() {
@@ -2611,7 +2633,7 @@
     $('textToggleBtn').addEventListener('click',setTextVisibility);
     $('printPreviewBtn').addEventListener('click',openPrintPreview);
     $('printCloseBtn').addEventListener('click',()=>$('printDialog').close());
-    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact','printBuyerLayout']){
+    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact','printBuyerLayout','printExcludeCollected']){
       $(id).addEventListener('change',renderPrintPreview);
     }
     $('printGoBtn').addEventListener('click',printPlan);
