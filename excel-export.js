@@ -130,7 +130,7 @@
       cv.setUint32(0,0x02014b50,true);
       cv.setUint16(4,20,true);
       cv.setUint16(6,20,true);
-      cv.setUint16(12,0x0021,true);
+      cv.setUint16(14,0x0021,true);
       cv.setUint32(16,crc,true);
       cv.setUint32(20,body.length,true);
       cv.setUint32(24,body.length,true);
