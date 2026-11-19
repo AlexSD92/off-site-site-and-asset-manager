@@ -1603,3 +1603,44 @@ body.map-fullscreen-active{overflow:hidden!important}
    background-color:transparent;color:#192f44!important
  }
 }
+
+/* Three-step collection status is derived, never manually recoloured:
+   red unpaid/uncollected, amber paid/uncollected, green paid/collected.
+   A separate high-contrast warning covers legacy inconsistencies. */
+.summary-strip .status-hold{background:#e35662!important}
+.summary-strip .status-pending{background:#e8ac36!important}
+.summary-strip .status-cleared{background:#1caf73!important}
+.summary-strip .status-issue{background:#b83c64!important}
+.lot-collection-state{
+ display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+ margin:12px 0;padding:13px 15px;border:2px solid currentColor;
+ background:#fff;border-radius:10px;font-size:15px;line-height:1.4
+}
+.lot-collection-state strong{font-weight:850;overflow-wrap:anywhere}
+.lot-collection-state small{
+ flex:1 1 100%;font-size:12px;font-weight:650;
+ line-height:1.5;padding-left:23px
+}
+.lot-state-dot{flex:0 0 14px;width:14px;height:14px;border-radius:50%;background:currentColor}
+.lot-state-unpaid{color:#b93647!important;border-color:#e69da7!important;background:#fff0f2!important}
+.lot-state-paid{color:#875600!important;border-color:#e5c26c!important;background:#fff6e1!important}
+.lot-state-collected{color:#11683e!important;border-color:#88c9a3!important;background:#e7f8ee!important}
+.lot-state-review{color:#8f214d!important;border-color:#d884a3!important;background:#fde7ef!important}
+.collection-state-pill{
+ display:inline-flex;align-items:center;gap:6px;border-radius:7px;
+ padding:7px 10px;font-weight:900;font-size:12px;line-height:1.35;
+ border:1px solid;white-space:normal;overflow-wrap:anywhere
+}
+.lot-state-badge{display:inline-flex;align-items:center;border:1px solid;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:850;line-height:1.4}
+.collection-payment-explainer{
+ border-left:3px solid #74a3d8;background:#f0f6fd;border-radius:0 8px 8px 0;
+ padding:10px 12px;font-size:12px;line-height:1.6;color:#3e607e;margin:12px 0
+}
+.quick-clear:disabled{
+ opacity:.4;cursor:not-allowed;filter:grayscale(.55)
+}
+.theme-dark .lot-state-unpaid{color:#ffc6ce!important;border-color:#a64e62!important;background:#4b2633!important}
+.theme-dark .lot-state-paid{color:#ffdf9c!important;border-color:#9d803b!important;background:#4a3d23!important}
+.theme-dark .lot-state-collected{color:#c3ffdb!important;border-color:#3a8861!important;background:#1d4635!important}
+.theme-dark .lot-state-review{color:#ffd0e1!important;border-color:#9c4466!important;background:#4c283c!important}
+.theme-dark .collection-payment-explainer{background:#263f57;color:#d2e7fc;border-color:#7facdf}

@@ -11,7 +11,7 @@
   const CELL_PX = 30;
   const MAX_UNDO = 80;
   const STATUS = {
-    pending: {label: 'Pending', color: '#e8b44d'},
+    pending: {label: 'Not collected', color: '#e35662'},
     cleared: {label: 'Cleared', color: '#1caf73'},
     hold: {label: 'On hold', color: '#916add'},
     issue: {label: 'Issue', color: '#e46570'},
@@ -26,7 +26,7 @@
     shutter: 'Drag along the entrance to draw a roller shutter.',
     lot: 'Drag across the grid to draw a lot footprint. Tap to create a 3 × 2 lot.',
     box: 'Drag to draw a coloured area or hazard box. Customise its label, colour and notes in Details; no invoice required.',
-    green: 'Tap any lot to mark it cleared (or tap again to undo).',
+    green: 'MARK COLLECTED: Tap a paid lot to confirm collection. Paid comes from Excel. To reverse, select the lot and choose Reopen.',
     delete: 'Tap an item to delete it. Undo restores it. Dragging the view won’t delete anything.',
     lock: 'Tap the grid to mark a lock. Add its key reference in Details.',
     label: 'Tap the grid to place a location label.'
@@ -325,6 +325,24 @@
   function storeCollections(next){
     if(!localAdminAllowed()||collectionsBlocked){toast('Collection storage is unavailable or needs recovery.');return false;}
     try{
+      // Do not allow any normal save/import path to overwrite or drop a
+      // previously recorded timestamped note. Preserve its original text,
+      // timestamp and ID even when an older backup is imported.
+      for(const [siteId,priorRecords] of Object.entries(collectionsBySite)){
+        const saved=next[siteId]||Object.create(null);
+        for(const [key,prior] of Object.entries(priorRecords||{})){
+          const oldNotes=COLLECTION().cleanRecord(prior).notes;
+          if(!oldNotes.length)continue;
+          const incoming=COLLECTION().cleanRecord(saved[key]);
+          const seen=new Set(oldNotes.map(n=>n.id));
+          const merged=[...oldNotes];
+          for(const note of incoming.notes){
+            if(!seen.has(note.id)){seen.add(note.id);merged.push(note);}
+          }
+          saved[key]={...incoming,notes:merged};
+        }
+        next[siteId]=saved;
+      }
       localStorage.setItem(COLLECTION_STORE_KEY,JSON.stringify(next));
       collectionsBySite=next;
       return true;
@@ -494,6 +512,7 @@
     const noteHtml=n=>`<div class="collection-note"><time datetime="${e(n.at)}">${e(new Date(n.at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}))}</time><p>${e(n.text)}</p></div>`;
     return `<section class="collection-editor">
       <header><h3>Collection checklist</h3><small>${context}</small></header>
+      <p class="collection-payment-explainer">Payment is confirmed automatically from the daily Excel. Mark lots collected in Map Mode; this updates the outstanding report and adds a timestamped activity entry. RAMS, booking and payment-contact checkboxes are kept independent and must only be ticked when actually completed.</p>
       <div class="collection-save-status" role="status" aria-live="polite">Changes save automatically on this device.</div>
       <div class="collection-checks">
         ${collectionCheck('Contacted for payment','contactedForPayment',record.contactedForPayment)}
@@ -575,7 +594,7 @@
         const matched=item.lots.map(n=>mappedLotForNumber(n,item.invoice)).filter(Boolean);
         return {...item,drawnIds:matched.map(o=>o.id),
           drawnArea:matched.reduce((sum,o)=>sum+o.w*o.h*project.cellMeters*project.cellMeters,0),
-          clearedDrawnCount:matched.filter(o=>o.status==='cleared').length};
+          clearedDrawnCount:matched.filter(o=>lotCollectionState(o).key==='collected').length};
       });
   }
   const numericLot=(a,b)=>String(a||'').localeCompare(String(b||''),undefined,{numeric:true,sensitivity:'base'});
@@ -583,7 +602,8 @@
     const results=[...entries],sort=settings.collectionsSort;
     const number=(item)=>item.lots[0]||'';
     const checked=(item,key)=>COLLECTION().cleanRecord(currentCollections()[item.key])[key]===true?1:0;
-    const cleared=item=>item.drawnIds.length>0&&item.clearedDrawnCount===item.drawnIds.length?1:0;
+    const cleared=item=>invoicePaidFromExcel(item.invoice)&&item.lots.length>0&&
+      item.drawnIds.length===item.lots.length&&item.clearedDrawnCount===item.lots.length?1:0;
     results.sort((a,b)=>{
       let d=0;
       switch(sort){
@@ -627,24 +647,31 @@
   }
   function collectionStatusChips(item){
     const rec=COLLECTION().cleanRecord(currentCollections()[item.key]);
+    const paid=invoicePaidFromExcel(item.invoice);
+    const mapComplete=!!item.lots.length&&item.drawnIds.length===item.lots.length&&item.clearedDrawnCount===item.lots.length;
+    const complete=paid&&mapComplete;
     const chips=[
-      ['Payment contacted',rec.contactedForPayment],
-      [rec.bookedIn&&rec.bookingDate?`Booked · ${rec.bookingDate} ${rec.bookingTime||'TBC'}`:'Booked in',rec.bookedIn],
+      ['Collection '+item.clearedDrawnCount+'/'+item.lots.length,complete],
+      [rec.bookedIn&&rec.bookingDate?'Booked · '+rec.bookingDate+' '+(rec.bookingTime||'TBC'):'Not booked',rec.bookedIn],
       ['RAMS checked',rec.ramsChecked]
     ];
-    if(item.drawnIds.length){
-      chips.push([`Cleared ${item.clearedDrawnCount}/${item.drawnIds.length} on map`,
-        item.clearedDrawnCount===item.drawnIds.length]);
-    }
-    return `<div class="collection-progress">${chips.map(([label,done])=>
-      `<span class="progress-chip ${done?'is-done':'is-pending'}">${done?'✓ ':'○ '}${e(label)}</span>`).join('')}</div>`;
+    const anyLegacyUnpaidCollection=!paid&&item.drawnIds.some(id=>{
+      const lot=project.objects.find(o=>o.id===id);
+      return lot&&lot.status==='cleared';
+    });
+    const summary=anyLegacyUnpaidCollection?LOT_STATES.review:
+      paid?(complete?LOT_STATES.collected:LOT_STATES.paid):LOT_STATES.unpaid;
+    return '<div class="collection-progress">'+
+      '<span class="collection-state-pill lot-state-'+summary.key+'">'+e(summary.label)+'</span>'+
+      chips.map(([label,done])=>
+      '<span class="progress-chip '+(done?'is-done':'is-pending')+'">'+(done?'✓ ':'○ ')+e(label)+'</span>').join('')+'</div>';
   }
   function collectionListCard(item){
     const rec=COLLECTION().cleanRecord(currentCollections()[item.key]);
     const buyer=ADMIN().asText(item.row?.['dbo.RWX_Invoices::Full Billing Name']);
     const title=item.invoice?'Invoice '+item.invoice:'Uninvoiced lot '+(item.lots[0]||'—');
     const area=item.drawnIds.length?` · Drawn area: ${fmt(item.drawnArea)} m²`:'';
-    return `<button type="button" class="collection-list-card ${item.drawnIds.length&&item.clearedDrawnCount===item.drawnIds.length?'invoice-cleared':''}"
+    return `<button type="button" class="collection-list-card ${invoicePaidFromExcel(item.invoice)&&item.lots.length>0&&item.clearedDrawnCount===item.lots.length?'invoice-cleared':''}"
       data-collection-select="${e(item.key)}" aria-label="Open ${e(title)} for ${e(buyer||'unknown buyer')}">
       <strong>${e(title)}</strong>
       <span>${e(buyer||'No buyer name in report')}</span>
@@ -669,10 +696,12 @@
     }).slice(0,100);
     const lotDetails=descriptionRows.length?descriptionRows.map(r=>{
       const drawn=mappedLotForNumber(r.LotNumber,item.invoice);
-      const status=drawn?.status==='cleared'?'<span class="lot-cleared-badge">✓ Cleared on map</span>':
-        drawn?'<span class="lot-map-pending">On map · not cleared</span>':
-        '<span class="lot-not-drawn">Not drawn</span>';
-      return `<div class="collection-report-lot ${drawn?.status==='cleared'?'lot-row-cleared':''}">
+      const state=drawn?lotCollectionState(drawn):
+        (invoicePaidFromExcel(item.invoice)?LOT_STATES.paid:LOT_STATES.unpaid);
+      const status=drawn?
+        `<span class="lot-state-badge lot-state-${state.key}">${e(state.label)}</span>`:
+        `<span class="lot-not-drawn">Not drawn · ${e(state.key==='paid'?'Paid':'Payment not confirmed')}</span>`;
+      return `<div class="collection-report-lot ${drawn&&state.key==='collected'?'lot-row-cleared':''}">
         <div class="collection-lot-title"><strong>Lot ${e(r.LotNumber)}</strong>${status}</div>
         <span>${e(ADMIN().asText(r['dbo.RWX_Listings::Title'])||'No description supplied')}</span>
       </div>`;
@@ -732,12 +761,21 @@
       let status,review=false,lot=null;
       if(hasExcelDuplicate){status='Duplicate lot in Excel — verify';review=true;}
       else if(matches.length>1){status='Duplicate drawn lot — verify';review=true;}
-      else if(matches.length===0){status='Not drawn — collection unverified';review=true;}
+      else if(matches.length===0){
+        status=invoicePaidFromExcel(invoice)?
+          'Paid · Collection unverified (not drawn)':
+          'Payment not confirmed · Collection unverified (not drawn)';
+        review=true;
+      }
       else if(effectiveInvoiceFor(matches[0])!==invoice){status='Invoice mismatch — verify';review=true;}
       else{
         lot=matches[0];
-        if(lot.status==='cleared'){totals.collectedCount++;continue;}
-        status='On map — not greened off';
+        if(lot.status==='cleared'&&invoicePaidFromExcel(invoice)){totals.collectedCount++;continue;}
+        if(lot.status==='cleared'){
+          status='Marked collected but payment not confirmed — investigate';review=true;
+        }else{
+          status=invoicePaidFromExcel(invoice)?'Paid — not collected':'Unpaid / not confirmed — not collected';
+        }
       }
       const price=outstandingPricePence(row['dbo.RWX_Listings::CurrentPrice']);
       const counted=hasExcelDuplicate?null:price;
@@ -792,7 +830,7 @@
     return `<div class="outstanding-metrics">
       <div><small>Not confirmed collected</small><strong>${t.lotCount}</strong><span>Excel lot rows</span></div>
       <div><small>Known outstanding hammer</small><strong>${outstandingMoney(t.totalPence)}</strong><span>Hammer from Excel CurrentPrice · not invoice balance</span></div>
-      <div><small>On-map outstanding hammer</small><strong>${outstandingMoney(t.mapPendingPence)}</strong><span>Lots drawn but not greened off</span></div>
+      <div><small>On-map outstanding hammer</small><strong>${outstandingMoney(t.mapPendingPence)}</strong><span>Lots drawn and not marked collected</span></div>
       <div><small>Needs collection verification</small><strong>${t.reviewCount}</strong><span>${outstandingMoney(t.reviewPence)} in known values</span></div>
     </div>`;
   }
@@ -843,8 +881,8 @@
   function outstandingExplanationHtml(data){
     const t=data.totals;
     return `<p class="outstanding-method"><strong>How this report works:</strong>
-      Each Excel lot is included unless its unique matching drawn lot is greened off.
-      Lots not drawn, duplicated or with invoice mismatches remain listed as <em>unverified</em>,
+      Each Excel lot is included unless its unique matching drawn lot is marked collected <em>and</em> the latest Excel confirms payment.
+      Lots not drawn, duplicated, with invoice mismatches or marked collected without payment remain listed as <em>unverified</em>,
       rather than being assumed collected. Values are taken from the
       <strong>dbo.RWX_Listings::CurrentPrice</strong> Excel column; they are hammer prices, not invoice balances.
       The CSV export calculates 25% BP, 20% VAT on hammer and 20% VAT on BP per lot,
@@ -885,7 +923,7 @@
       ${outstandingMetricsHtml(data)}
       ${outstandingExplanationHtml(data)}
       ${data.groups.length?data.groups.map(outstandingGroupHtml).join(''):
-        '<p class="outstanding-empty">All uniquely matched lots have been greened off, and no other outstanding Excel rows remain.</p>'}
+        '<p class="outstanding-empty">All uniquely matched lots are paid and marked collected; no unverified Excel rows remain.</p>'}
     </section>`;
   }
 
@@ -1042,6 +1080,100 @@
     return String(lot?.invoice??'').trim()||importedInvoiceFor(lot);
   }
 
+  // These states are derived: payment is sourced from daily Excel,
+  // collection is the single lot.status='cleared' flag in the site map.
+  // Never copy payment confirmations into structural map JSON.
+  const LOT_STATES=Object.freeze({
+    unpaid:{key:'unpaid',label:'Unpaid · Not collected',color:'#e35662'},
+    paid:{key:'paid',label:'Paid · Not collected',color:'#e8ac36'},
+    collected:{key:'collected',label:'Paid · Collected',color:'#1caf73'},
+    review:{key:'review',label:'Collected · PAYMENT NOT CONFIRMED',color:'#b83c64'}
+  });
+  function hasPaymentTimestamp(raw){
+    if(raw===null||raw===undefined)return false;
+    if(typeof raw==='number')return Number.isFinite(raw)&&raw>10000&&raw<1000000;
+    const value=String(raw).trim();
+    if(!value||/^(0|false|no|n\/?a|unpaid|null|undefined)$/i.test(value))return false;
+    if(/^\d{5,6}(?:\.\d+)?$/.test(value))return Number(value)>10000&&Number(value)<1000000;
+    // Accept typical ISO and UK-style dates, but reject arbitrary labels.
+    if(/^\d{4}-\d\d-\d\d(?:[ T]\d\d:\d\d(?::\d\d)?(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)?$/i.test(value)){
+      return !Number.isNaN(Date.parse(value));
+    }
+    const uk=value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::\d{2})?)?$/);
+    if(uk){
+      const day=+uk[1],month=+uk[2],year=+uk[3];
+      const dt=new Date(Date.UTC(year,month-1,day));
+      return year>=2000&&dt.getUTCFullYear()===year&&dt.getUTCMonth()===month-1&&dt.getUTCDate()===day;
+    }
+    return false;
+  }
+  function invoicePaidFromExcel(invoice){
+    const report=adminReport();
+    if(!report||!invoice||!localAdminAllowed())return false;
+    if(cachedReport!==report){
+      cachedReport=report;cachedReportIndex=ADMIN().indexReport(report);
+    }
+    const rows=cachedReportIndex.byInvoice.get(invoice);
+    return !!rows?.length&&rows.every(row=>hasPaymentTimestamp(row['dbo.RWX_Invoices::PaidDTTM']));
+  }
+  function lotCollectionState(lot){
+    if(!lot||lot.type!=='lot')return LOT_STATES.unpaid;
+    const reportRow=reportForLot(lot)?.row;
+    const invoice=effectiveInvoiceFor(lot);
+    const matches=!!reportRow&&invoice&&invoice===ADMIN().invoiceKey(reportRow['dbo.RWX_Invoices::Id']);
+    const paid=matches&&invoicePaidFromExcel(invoice);
+    if(lot.status==='cleared')return paid?LOT_STATES.collected:LOT_STATES.review;
+    return paid?LOT_STATES.paid:LOT_STATES.unpaid;
+  }
+  function appendCollectionAudit(lot,detail){
+    if(!localAdminAllowed()||collectionsBlocked)return false;
+    const key=collectionKeyForLot(lot);
+    const record=COLLECTION().cleanRecord(currentCollections()[key]);
+    const note={id:nextId(),at:new Date().toISOString(),text:'AUTOMATIC COLLECTION LOG · Lot '+lot.number+': '+detail};
+    return updateCollectionForKey(key,{notes:[...record.notes,note]});
+  }
+  function setLotCollected(lot,collected){
+    if(!lot||lot.type!=='lot')return false;
+    const already=lot.status==='cleared';
+    if(already===collected){
+      toast('Lot '+lot.number+(collected?' is already marked collected.':' is already open.'));
+      return false;
+    }
+    if(collected){
+      if(lotCollectionState(lot).key!=='paid'){
+        toast('Collection blocked: the daily Excel must confirm this invoice is paid before marking the lot collected.');
+        return false;
+      }
+    }else if(!window.confirm('Reopen lot '+lot.number+' as not collected? This reversal will be added to the timestamped activity log.')){
+      return false;
+    }
+    const message=collected?'Marked collected. Payment confirmed by imported Excel.':
+      'Marked not collected again (reopened). Check previous collection entry.';
+    if(!appendCollectionAudit(lot,message)){
+      toast('Could not save the collection audit note. Lot status has not changed.');
+      return false;
+    }
+    const before=snapshot();
+    lot.status=collected?'cleared':'pending';
+    lot.color=''; // old custom colours must never override payment/collection state
+    commit(before);
+    toast('Lot '+lot.number+' · '+lotCollectionState(lot).label);
+    return true;
+  }
+  function logUndoRedoCollectionChange(beforeJson,afterJson,action){
+    const before=JSON.parse(beforeJson),after=JSON.parse(afterJson);
+    const old=new Map((before.objects||[]).filter(o=>o.type==='lot').map(o=>[o.id,o]));
+    for(const lot of (after.objects||[]).filter(o=>o.type==='lot')){
+      const previous=old.get(lot.id);
+      if(previous&&previous.status!==lot.status&&
+         (previous.status==='cleared'||lot.status==='cleared')){
+        const current=project.objects.find(o=>o.id===lot.id);
+        if(current)appendCollectionAudit(current,action+': lot '+lot.number+' collection flag changed from '+
+          previous.status+' to '+lot.status+'.');
+      }
+    }
+  }
+
   const createProject = (name='Untitled auction site') => ({
     id:nextId(), name, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
     cols:48, rows:32, cellMeters:1, nextLot:1, textScale:1, showText:true, objects:[]
@@ -1195,11 +1327,17 @@
   const snapshot=()=>JSON.stringify(project);
   function undo() {
     if(!history.length)return;
-    future.push(snapshot());restore(history.pop());toast('Undid last change');
+    const before=snapshot();
+    future.push(before);restore(history.pop());
+    logUndoRedoCollectionChange(before,snapshot(),'Undo');
+    toast('Undid last change');
   }
   function redo() {
     if(!future.length)return;
-    history.push(snapshot());restore(future.pop());toast('Redid change');
+    const before=snapshot();
+    history.push(before);restore(future.pop());
+    logUndoRedoCollectionChange(before,snapshot(),'Redo');
+    toast('Redid change');
   }
   function getSelected(){return project.objects.find(o=>o.id===settings.selected)||null;}
   function changeProject(id){
@@ -1303,7 +1441,7 @@
   function exportCSV(){
     const rows=[['Lot number','Invoice number','Status','Colour','X (m)','Y (m)','Width (m)','Depth (m)','Notes']];
     for(const l of project.objects.filter(o=>o.type==='lot'))rows.push([
-      l.number,effectiveInvoiceFor(l),STATUS[l.status]?.label||l.status,l.color||STATUS[l.status].color,
+      l.number,effectiveInvoiceFor(l),lotCollectionState(l).label,lotCollectionState(l).color,
       fmt(l.x*project.cellMeters),fmt(l.y*project.cellMeters),fmt(l.w*project.cellMeters),fmt(l.h*project.cellMeters),l.notes||''
     ]);
     const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -1313,11 +1451,11 @@
 
   function refreshStats(){
     const lots=project.objects.filter(o=>o.type==='lot');
-    const count=s=>lots.filter(o=>o.status===s).length;
-    const cleared=count('cleared');
+    const count=key=>lots.filter(o=>lotCollectionState(o).key===key).length;
+    const cleared=count('collected');
     $('statTotal').textContent=lots.length;$('statCleared').textContent=cleared;
-    $('statPending').textContent=count('pending')+count('reserved');
-    $('statHold').textContent=count('hold');$('statIssue').textContent=count('issue');
+    $('statPending').textContent=count('paid');
+    $('statHold').textContent=count('unpaid');$('statIssue').textContent=count('review');
     const percentage=lots.length?Math.round(cleared/lots.length*100):0;
     $('progressLabel').textContent=percentage+'%';$('progressFill').style.width=percentage+'%';
     $('lotsTabCount').textContent=lots.length;
@@ -1574,10 +1712,10 @@
   }
   function drawLot(c,o,showText=true,printContacts=false) {
  if(o.w<=0||o.h<=0)return;
- const color=o.color||STATUS[o.status]?.color||STATUS.pending.color;
+ const color=lotCollectionState(o).color;
  c.fillStyle=color;c.globalAlpha=.2;roundRect(c,o.x+.06,o.y+.06,o.w-.12,o.h-.12,.17);c.fill();c.globalAlpha=1;
  c.lineWidth=.085;c.strokeStyle=color;roundRect(c,o.x+.045,o.y+.045,o.w-.09,o.h-.09,.13);c.stroke();
- if(o.status==='cleared'){
+ if(lotCollectionState(o).key==='collected'){
    c.fillStyle=color;roundRect(c,o.x+.05,o.y+.05,Math.min(.22,o.w/4),o.h-.1,.06);c.fill();
  }
  if(!showText)return;
@@ -2042,9 +2180,8 @@
       drawing={action:'pan',startClient:{x:ev.clientX,y:ev.clientY},startOffset:{x:view.offsetX,y:view.offsetY}};return;
     }
     if(settings.tool==='green'){
-      const l=hitObject(p,'lot');
-      if(l){const before=snapshot();l.status=l.status==='cleared'?'pending':'cleared';commit(before);
-        toast(`Lot ${l.number||'?'} ${l.status==='cleared'?'cleared ✓':'set back to pending'}`);}
+      const lot=hitObject(p,'lot');
+      if(lot)setLotCollected(lot,true);
       return;
     }
     if(settings.tool==='delete'){
@@ -2357,7 +2494,7 @@
           `<div class="box-register">${project.objects.filter(x=>x.type==='box').map(x=>
             `<button type="button" class="box-register-item" data-select="${e(x.id)}"><span class="box-swatch" style="background:${x.color}"></span><span>${e(x.label||'Unlabelled area')}</span><span class="box-register-size">${x.w} × ${x.h}</span></button>`).join('')}</div>`
           : '<p class="field-help">No area boxes yet.</p>'}
-        <div class="divider"></div><h3 class="panel-title">Lot Colour Key</h3><div class="legend-grid">${Object.values(STATUS).map(s=>`<div class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${s.label}</div>`).join('')}</div>
+        <div class="divider"></div><h3 class="panel-title">Lot Colour Key</h3><div class="legend-grid">${[LOT_STATES.unpaid,LOT_STATES.paid,LOT_STATES.collected,LOT_STATES.review].map(s=>`<div class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${s.label}</div>`).join('')}</div>
         <div class="helper-card"><strong>How local saving works</strong><p>Every edit is saved automatically in this browser on this device. Export JSON to share your plan, transfer it to another device or keep a backup. Clearing browser data can erase local copies.</p></div>
         <div class="panel-actions"><button class="btn btn-light" data-action="png">Save plan as PNG</button><button class="btn btn-light" data-action="csv">Export lots CSV</button><button class="btn btn-light" data-action="duplicateSite">Duplicate site</button></div>
         <div class="divider"></div>
@@ -2376,19 +2513,27 @@
       if(reportForLot(o)?.row){
         html+=`<details class="map-linked-data"><summary>Buyer contact from daily Excel</summary>${linkedContactFields(o)}</details>`;
       }
-      html+=field('Clearance status','status',optionsHtml(Object.entries(STATUS).map(([k,v])=>[k,v.label]),o.status),'select');
-      html+=`<div class="field-grid">${field('Custom colour','color',o.color||STATUS[o.status].color,'color')}
-        <div class="field"><label>Use status colour</label><button class="btn btn-light" data-action="resetColor" style="width:100%;min-height:40px">Reset colour</button></div></div>`;
-      html+=`<p class="field-help">Colour can be customised independently of clearance status. Green means cleared in the progress dashboard.</p>`;
+      const state=lotCollectionState(o);
+      html+=`<div class="lot-collection-state lot-state-${state.key}" role="status" aria-live="polite">
+        <span class="lot-state-dot" aria-hidden="true"></span>
+        <strong>${e(state.label)}</strong>
+        <small>${state.key==='paid'?'Payment confirmed by Excel. You can now mark collected.':
+          state.key==='collected'?'Collection recorded on the map. The timestamped log is in the invoice record.':
+          state.key==='review'?'Previously marked collected, but Excel does not confirm payment. Investigate.':
+          'Payment not confirmed in the daily Excel. Collection cannot be marked.'}</small>
+      </div>`;
       html+=`<div class="divider"></div><h3 class="panel-title">Footprint</h3>${fieldsXY(o,['x','y','w','h'])}`;
       html+=`<p class="field-help">Physical size: ${fmt(o.w*project.cellMeters)} × ${fmt(o.h*project.cellMeters)} metres.</p>`;
       html+=fontControlHtml(o);
-      html+=field('Map / asset notes','notes',o.notes,'textarea');
+      html+=field('Map / asset description (editable, not the audit log)','notes',o.notes,'textarea');
       html+=`<div class="map-admin-link"><strong>Buyer, collection booking and activity notes</strong>
-        <p>Manage the payment, recovery details, RAMS and timestamped collection notes in Admin Mode.</p>
+        <p>Payment comes from Excel. Manage recovery, RAMS and timestamped notes in Admin Mode.</p>
         <button class="btn btn-primary" type="button" data-action="openAdminForLot">Open collection record</button>
       </div>`;
-      html+=`<div class="panel-actions"><button class="btn btn-success" data-action="clearSelected">✓ ${o.status==='cleared'?'Reopen lot':'Green off lot'}</button><button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
+      html+=`<div class="panel-actions"><button class="btn ${o.status==='cleared'?'btn-light':'btn-success'}" data-action="clearSelected"
+        ${state.key==='unpaid'?'disabled title="Payment must be confirmed by Excel"':''}>
+        ${o.status==='cleared'?'↶ Reopen lot':state.key==='paid'?'✓ Mark as collected':'Payment required'}</button>
+        <button class="btn btn-light" data-action="duplicateObject">Duplicate</button></div>`;
     }else if(o.type==='box'){
       html+=field('Area / hazard label','label',o.label,'text','placeholder="e.g. Hazard, Obstruction, Keep Clear"');
       html+=`<div class="field"><label>Optional quick presets</label><div class="box-presets">
@@ -2421,7 +2566,7 @@
     panel.innerHTML=html;
   }
   function renderLotsPanel(){
-    panel.innerHTML=`<h2 class="panel-title">Lot Register</h2><p class="panel-description">Select a lot to edit its invoice, location or collection status. Linked invoice IDs come from the most recently imported daily spreadsheet, while manually entered values take priority. The exported CSV may contain confidential imported invoice IDs.</p>
+    panel.innerHTML=`<h2 class="panel-title">Lot Register</h2><p class="panel-description">Payment comes automatically from daily Excel. Red = unpaid, amber = paid but not collected, green = paid and collected. Select a paid lot to mark it collected. The timestamped collection log is in Admin Mode.</p>
       <div class="lot-tools"><input id="lotSearch" class="search-input" type="search" placeholder="Search lot, invoice or notes…" value="${e(settings.lotSearch)}" aria-label="Search lots">
         <label for="lotSort" class="sort-label">Sort drawn lots</label>
         <select id="lotSort" class="search-input">${optionsHtml([
@@ -2430,7 +2575,7 @@
           ['booked','Booked in first'],['rams','RAMS checked first'],
           ['contacted','Payment contacted first'],['cleared','Cleared lots first']
         ],settings.lotSort)}</select>
-        <div class="filter-row" id="lotFilters">${[['all','All'],['pending','Pending'],['cleared','Cleared'],['hold','Hold'],['issue','Issues'],['reserved','Reserved']].map(([k,v])=>`<button class="filter-chip ${settings.lotFilter===k?'active':''}" data-filter="${k}">${v}</button>`).join('')}</div></div>
+        <div class="filter-row" id="lotFilters">${[['all','All'],['unpaid','Unpaid'],['paid','Paid / Awaiting'],['collected','Collected'],['review','Needs check']].map(([k,v])=>`<button class="filter-chip ${settings.lotFilter===k?'active':''}" data-filter="${k}">${v}</button>`).join('')}</div></div>
       <div id="lotList"></div>
       <div class="divider"></div><div class="panel-actions"><button class="btn btn-light" data-action="csv">Export lot register CSV</button><button class="btn btn-primary" data-action="drawLot">+ Draw lot</button></div>`;
     renderLotList();
@@ -2438,8 +2583,8 @@
   function renderLotList(){
     const target=$('lotList');if(!target)return;
     const query=settings.lotSearch.toLowerCase().trim();
-    const lots=project.objects.filter(o=>o.type==='lot'&&(settings.lotFilter==='all'||o.status===settings.lotFilter))
-      .filter(o=>[o.number,effectiveInvoiceFor(o),o.notes,o.status].join(' ').toLowerCase().includes(query));
+    const lots=project.objects.filter(o=>o.type==='lot'&&(settings.lotFilter==='all'||lotCollectionState(o).key===settings.lotFilter))
+      .filter(o=>[o.number,effectiveInvoiceFor(o),o.notes,lotCollectionState(o).label].join(' ').toLowerCase().includes(query));
     const tick=(lot,key)=>collectionForLot(lot)[key]===true?1:0;
     lots.sort((a,b)=>{
       let delta=0;
@@ -2457,11 +2602,13 @@
     });
     if(!lots.length){target.innerHTML='<div class="empty-list">No matching lots yet. Choose <b>Draw Lot</b> to place one on the site plan.</div>';return;}
     target.innerHTML=lots.map(o=>{
-      const cleared=o.status==='cleared';const c=o.color||STATUS[o.status].color;
+      const state=lotCollectionState(o),cleared=state.key==='collected',c=state.color;
       const shownInvoice=effectiveInvoiceFor(o);
       return `<div class="list-item-card ${settings.selected===o.id?'selected':''}" data-select="${e(o.id)}" tabindex="0" role="button" aria-label="Edit lot ${e(o.number)}">
-      <div class="list-card-top"><span class="lot-swatch" style="background:${c}"></span><div class="lot-card-main"><strong>Lot ${e(o.number||'—')}</strong><small>${shownInvoice?`Invoice: ${e(shownInvoice)}`:'No invoice linked'} · ${e(STATUS[o.status].label)} · ${fmt(o.w*o.h*project.cellMeters*project.cellMeters)} m²</small></div>
-      <div class="lot-card-actions"><button class="quick-clear ${cleared?'is-cleared':''}" data-clear="${e(o.id)}" title="${cleared?'Mark pending':'Mark cleared'}" aria-label="${cleared?'Reopen':'Clear'} lot ${e(o.number)}">${cleared?'↶':'✓'}</button></div></div></div>`;
+      <div class="list-card-top"><span class="lot-swatch" style="background:${c}"></span><div class="lot-card-main"><strong>Lot ${e(o.number||'—')}</strong><small>${shownInvoice?`Invoice: ${e(shownInvoice)}`:'No invoice linked'} · ${e(state.label)} · ${fmt(o.w*o.h*project.cellMeters*project.cellMeters)} m²</small></div>
+      <div class="lot-card-actions"><button class="quick-clear ${cleared?'is-cleared':''}" data-clear="${e(o.id)}" title="${o.status==='cleared'?'Reopen lot (logged)':'Mark paid lot collected'}"
+      aria-label="${o.status==='cleared'?'Reopen':'Mark collected'} lot ${e(o.number)}"
+      ${state.key==='unpaid'?'disabled':''}>${o.status==='cleared'?'↶':'✓'}</button></div></div></div>`;
     }).join('');
   }
   function renderAccessPanel(){
@@ -2509,6 +2656,8 @@
       else if(key==='y')value=minmax(value,0,project.rows);
     }
     if(key.startsWith('linked_'))return;
+    // Payment/collection flags are not manually editable fields.
+    if(obj.type==='lot'&&['status','color'].includes(key))return;
     if(key==='invoice'&&obj.type==='lot'){
       value=String(value).trim().slice(0,200);
       // Even if the imported invoice is visible in the input, do not copy
@@ -2589,10 +2738,18 @@
       delete o.fontSize;commit(before);return;
     }
     if(action==='resetColor')o.color='';
-    if(action==='clearSelected')o.status=o.status==='cleared'?'pending':'cleared';
+    if(action==='clearSelected'){
+      setLotCollected(o,o.status!=='cleared');
+      return;
+    }
     if(action==='duplicateObject'){
       const copy=clone(o);copy.id=nextId();
-      if(copy.type==='lot')copy.number=String(project.nextLot++);
+      if(copy.type==='lot'){
+        copy.number=String(project.nextLot++);
+        copy.invoice='';
+        copy.status='pending';
+        copy.color='';
+      }
       if(copy.type==='lot'||copy.type==='box'){
         copy.x=minmax(copy.x+1,0,Math.max(0,project.cols-copy.w));
         copy.y=minmax(copy.y+1,0,Math.max(0,project.rows-copy.h));
@@ -2682,6 +2839,7 @@
     if(!group?.invoice||!reportIndex?.byInvoice)return false;
     const rows=reportIndex.byInvoice.get(group.invoice);
     if(!rows||!rows.length)return false;
+    if(!invoicePaidFromExcel(group.invoice))return false;
     return rows.every(row=>{
       const key=ADMIN().lotKey(row.LotNumber);
       if(!key||reportIndex.duplicates?.has(key))return false;
@@ -2807,7 +2965,7 @@
     $('printMeta').textContent=`${fmt(project.cols*project.cellMeters)} m × ${fmt(project.rows*project.cellMeters)} m · ${paper} ${orientation} · rotation ${view.rotation*90}°`;
     $('printScale').textContent=`1 grid square = ${fmt(project.cellMeters)} m · diagram fitted to page (not a measured print scale)`;
     const lots=project.objects.filter(x=>x.type==='lot');
-    $('printCounts').textContent=`Lots: ${lots.length} · Cleared: ${lots.filter(x=>x.status==='cleared').length}`;
+    $('printCounts').textContent=`Lots: ${lots.length} · Paid & collected: ${lots.filter(x=>lotCollectionState(x).key==='collected').length}`;
     $('printSheetSize').textContent=`${paper} ${orientation} · full-page site plan${contacts?` + ${format==='buyerGroups'?'buyer / invoice':'lot'} contact pages`:''}${results.excluded?` · ${results.excluded} fully collected excluded`:''}`;
   }
 
@@ -2989,7 +3147,8 @@
       const clear=event.target.closest('[data-clear]');
       if(clear){event.stopPropagation();
         const lot=project.objects.find(o=>o.id===clear.dataset.clear&&o.type==='lot');
-        if(lot){const before=snapshot();lot.status=lot.status==='cleared'?'pending':'cleared';commit(before);}return;
+        if(lot)setLotCollected(lot,lot.status!=='cleared');
+        return;
       }
       const filter=event.target.closest('[data-filter]');
       if(filter){settings.lotFilter=filter.dataset.filter;for(const b of panel.querySelectorAll('[data-filter]'))b.classList.toggle('active',b===filter);renderLotList();return;}
