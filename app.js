@@ -870,8 +870,8 @@
       <header class="outstanding-invoice-head">
         <div><h3>${e(group.invoice?'Invoice '+group.invoice:'Uninvoiced lot '+group.lots[0].lotNumber)}</h3>
           <p>${excludeBuyer?'Buyer details excluded':e(group.buyer||'Buyer name not supplied')+(hasWarning?' · <strong>Buyer details inconsistent in Excel — verify</strong>':'')}</p></div>
-        <div class="outstanding-invoice-total"><small>${grouped?'Invoice subtotal · ':''}${group.lots.length} lot${group.lots.length===1?'':'s'} not confirmed collected</small>
-          <strong>${outstandingMoney(group.totalPence)}</strong></div>
+        <div class="outstanding-invoice-total"><small>${group.lots.length} lot${group.lots.length===1?'':'s'} not confirmed collected</small>
+          ${grouped?'':`<strong>${outstandingMoney(group.totalPence)}</strong>`}</div>
       </header>
       ${excludeBuyer?'':`<div class="outstanding-contact-lines">
         ${contacts.length?contacts.map(([label,v])=>`<span><b>${e(label)}:</b> ${e(v)}</span>`).join(''):
@@ -942,7 +942,7 @@
         <label><input type="checkbox" data-outstanding-option="excludeBuyer" ${settings.outstandingExcludeBuyer?'checked':''}> Exclude buyer details</label>
         <label><input type="checkbox" data-outstanding-option="mappedOnly" ${settings.outstandingMappedOnly?'checked':''}> Only include lots drawn on the map</label>
         <label><input type="checkbox" data-outstanding-option="groupByInvoice" ${settings.outstandingGroupByInvoice?'checked':''}> Group by invoice number</label>
-        <small>Grouping keeps each invoice's lots together, adds invoice subtotals in CSV and shows the invoice number even when buyer details are excluded. Only the report changes; your data is untouched.</small>
+        <small>Grouping sorts lots by invoice number and shows the invoice reference against each lot, with no extra subtotal rows. Buyer-detail exclusions still apply. Your saved data is untouched.</small>
       </div>
       <div class="outstanding-top-actions">
         <button type="button" class="btn btn-primary" data-action="printOutstanding">Print report / Save PDF</button>
@@ -986,7 +986,7 @@
       <p>Confidential · Generated ${e(data.generatedAt)} · Excel source: ${e(data.report.sourceName||'Daily report')}
         ${data.report.auctionEventId?' · Auction '+e(data.report.auctionEventId):''}</p>
       <p>${options.groupByInvoice?
-        'Grouped by invoice number, with outstanding lots and invoice subtotals. Buyer contact details '+(options.excludeBuyer?'excluded.':'included.'):
+        'Grouped by invoice number, listing individual lots without invoice subtotal rows. Buyer contact details '+(options.excludeBuyer?'excluded.':'included.'):
         options.excludeBuyer?'Lot-level report. Buyer details and invoice references are omitted.':'Grouped by buyer/invoice, with lot-level descriptions, values and contact details.'}</p></header>
       ${outstandingMetricsHtml(data)}${outstandingExplanationHtml(data)}
       ${outstandingDetailsHtml(data,options)}`;
@@ -1015,7 +1015,6 @@
     const rows=[cols];
     const amount=pence=>(pence/100).toFixed(2);
     for(const group of groupByInvoice?invoiceOrderedOutstandingGroups(data):data.groups){
-      let groupHammer=0,groupBp=0,groupVat=0,unpriced=0;
       const phones=[group.mobile,group.telephone].map(v=>String(v||'').trim())
         .filter((v,i,all)=>v&&all.indexOf(v)===i).join(' / ');
       for(const lot of group.lots){
@@ -1023,9 +1022,6 @@
         // Keep their rows for verification but leave all values blank.
         const hammer=lot.countedPence;
         const charges=hammer===null?null:outstandingCharges(hammer);
-        if(charges){
-          groupHammer+=hammer;groupBp+=charges.bpPence;groupVat+=charges.totalVatPence;
-        }else unpriced++;
         const description=lot.description||'No description supplied';
         const verification=lot.review?' ['+lot.status+']':'';
         rows.push([
@@ -1036,12 +1032,6 @@
           ...(!excludeBuyer?[group.buyer,phones,group.email,group.invoice]:
             groupByInvoice?[group.invoice]:[])
         ]);
-      }
-      if(groupByInvoice){
-        const reference=group.invoice?'Invoice '+group.invoice:'Uninvoiced lot '+group.lots[0].lotNumber;
-        rows.push(['',reference+' subtotal'+(unpriced?' (known values only; '+unpriced+' unavailable/duplicate)':''),
-          amount(groupHammer),amount(groupBp),amount(groupVat),
-          ...(!excludeBuyer?['','','',group.invoice]:[group.invoice])]);
       }
     }
     // Prevent formula injection when Excel opens text from the daily export.
