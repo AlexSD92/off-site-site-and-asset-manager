@@ -18,7 +18,7 @@ Built in **HTML, CSS and vanilla JavaScript**. No third-party runtime dependenci
 
 ## Run locally — required for confidential admin data
 
-Use a modern browser and keep **`index.html`**, **`styles.css`**, **`invoice-report.js`** and **`app.js`** together.
+Use a modern browser and keep **`index.html`**, **`styles.css`**, **`invoice-report.js`**, **`excel-export.js`**, **`collections-core.js`** and **`app.js`** together.
 
 In PowerShell, from the checked-out project folder:
 
@@ -42,6 +42,12 @@ Open **http://127.0.0.1:8000** in the same computer's browser. The `--bind 127.0
 Rows with blank invoice ID are not grouped by purchaser ID; ambiguous duplicate lot numbers are not automatically matched. Imported admin payment status does **not** automatically green off a lot.
 
 The current browser implementation supports modern `.xlsx` (not old binary `.xls` or encrypted workbooks), parsing entirely on-device through the browser's built-in ZIP decompression and XML parser.
+
+## Outstanding report and invoice summary
+
+Under **Admin Mode → Outstanding Report**, choose **Download Excel (2 tabs)** to create a local `.xlsx` workbook. The first tab, **Lot Details**, contains one line per outstanding/unverified lot (without invoice subtotal rows). The second, **Invoice Summary**, contains one line per invoice and a calculated total from the included lots. Totals include a 25% buyer's premium and 20% VAT on the hammer and premium, rounded per lot; shipping is excluded. These are **totals of the included report rows, not authoritative invoice balances**. Missing or duplicate prices show a value warning instead of an incomplete number.
+
+The **Exclude buyer details**, **Only include lots drawn on the map**, and **Group by invoice number** options also apply to the Excel download. Invoice references remain visible when buyer names/contact details are excluded. The existing CSV and PDF downloads remain available. The Excel file is generated wholly within the browser, with no remote service or external JavaScript library.
 
 ## Privacy and safety
 
