@@ -2057,6 +2057,8 @@
     const showText=options.showText ?? (project.showText!==false);
     const arr=objectsInDrawOrder();
     for(const o of arr){
+      // Preview-only filter: keep the site plan data and every object intact.
+      if(options.lotsOnly===true&&o.type!=='lot')continue;
       c.save();
       if(['wall','door','shutter'].includes(o.type))drawStructure(c,o,showText);
       else if(o.type==='lot')drawLot(c,o,showText,options.printContacts===true);
@@ -3007,6 +3009,7 @@
     $('printOrientation').value=printView==='site'?(project.cols>=project.rows?'landscape':'portrait'):'portrait';
     $('printText').checked=project.showText!==false;
     $('printGrid').checked=true;
+    $('printLotsOnly').checked=false;
     $('printContact').checked=true;
     $('printBuyerLayout').value='buyerGroups';
     $('printExcludeCollected').checked=false;
@@ -3048,6 +3051,7 @@
       return;
     }
     const showText=$('printText').checked,grid=$('printGrid').checked;
+    const lotsOnly=$('printLotsOnly').checked;
     const contacts=$('printContact').checked;
     const excludeCollected=contacts&&$('printExcludeCollected').checked;
     $('printBuyerLayout').disabled=!contacts;
@@ -3077,7 +3081,7 @@
     const px=Math.min((width-14)/bounds.width,(height-14)/bounds.height);
     const ox=(width-bounds.width*px)/2-bounds.minX*px;
     const oy=(height-bounds.height*px)/2-bounds.minY*px;
-    paint(c,width,height,ox,oy,px,{export:true,grid,showText,
+    paint(c,width,height,ox,oy,px,{export:true,grid,showText,lotsOnly,
       printContacts:false,rotation:view.rotation});
     $('printMap').src=render.toDataURL('image/png');
     $('printPage').style.aspectRatio=`${mmW} / ${mmH}`;
@@ -3178,7 +3182,7 @@
     $('textToggleBtn').addEventListener('click',setTextVisibility);
     $('printPreviewBtn').addEventListener('click',openPrintPreview);
     $('printCloseBtn').addEventListener('click',()=>$('printDialog').close());
-    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact','printBuyerLayout','printExcludeCollected','printExcludeBuyer','printMappedOnly','printGroupByInvoice']){
+    for(const id of ['printPaper','printOrientation','printText','printGrid','printLotsOnly','printContact','printBuyerLayout','printExcludeCollected','printExcludeBuyer','printMappedOnly','printGroupByInvoice']){
       $(id).addEventListener('change',()=>{
         if(printView==='outstanding'){
           settings.outstandingExcludeBuyer=$('printExcludeBuyer').checked;
