@@ -1047,7 +1047,7 @@
       downloadBlob(new Blob([bytes],{
         type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       }),safeName(project.name)+'-outstanding-lots.xlsx');
-      toast('Excel workbook downloaded with Lot Details and Invoice Summary tabs.');
+      toast(`Excel downloaded: ${lots.length} lot row(s), ${invoices.length} invoice summary row(s).`);
     }catch(err){
       console.error('Could not generate local Excel report:',err);
       toast('Excel download failed: '+String(err?.message||'Unknown error').slice(0,100));
