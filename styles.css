@@ -1434,6 +1434,23 @@ body.map-fullscreen-active{overflow:hidden!important}
    workflow. Read-only buyer and lot fields; no collections edits here. */
 .mode-admin .panel-tabs{grid-template-columns:repeat(4,minmax(0,1fr))}
 .outstanding-workspace{max-width:1200px}
+.outstanding-export-options{
+ display:flex;align-items:center;gap:10px 20px;flex-wrap:wrap;
+ margin:15px 0 9px;padding:13px 15px;
+ border:1px solid #d8e5f1;border-radius:10px;background:#f4f8fd;
+}
+.outstanding-export-options>strong{font-size:13px;color:#284b70}
+.outstanding-export-options label{
+ display:inline-flex;align-items:center;gap:8px;
+ font-size:13px;font-weight:700;color:#35536f;cursor:pointer
+}
+.outstanding-export-options input{width:17px;height:17px;accent-color:#2d81b8;cursor:pointer}
+.outstanding-export-options small{flex-basis:100%;font-size:11px;color:#607993;line-height:1.4}
+.print-controls .print-outstanding-option[hidden]{display:none!important}
+.theme-dark .outstanding-export-options{background:#21374b;border-color:#49657c}
+.theme-dark .outstanding-export-options>strong,
+.theme-dark .outstanding-export-options label{color:#d9e9fa}
+.theme-dark .outstanding-export-options small{color:#aec3d7}
 .outstanding-top-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:14px 0 17px}
 .outstanding-top-actions .btn{min-height:44px;font-size:13px;padding:11px 16px}
 .outstanding-report-source{font-size:12px;color:#607892;line-height:1.5;margin:3px 0 15px;overflow-wrap:anywhere}
