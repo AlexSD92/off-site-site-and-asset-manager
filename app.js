@@ -791,8 +791,8 @@
     const t=data.totals;
     return `<div class="outstanding-metrics">
       <div><small>Not confirmed collected</small><strong>${t.lotCount}</strong><span>Excel lot rows</span></div>
-      <div><small>Known value of these lots</small><strong>${outstandingMoney(t.totalPence)}</strong><span>Excel CurrentPrice · not invoice balance</span></div>
-      <div><small>On-map outstanding value</small><strong>${outstandingMoney(t.mapPendingPence)}</strong><span>Lots drawn but not greened off</span></div>
+      <div><small>Known outstanding hammer</small><strong>${outstandingMoney(t.totalPence)}</strong><span>Hammer from Excel CurrentPrice · not invoice balance</span></div>
+      <div><small>On-map outstanding hammer</small><strong>${outstandingMoney(t.mapPendingPence)}</strong><span>Lots drawn but not greened off</span></div>
       <div><small>Needs collection verification</small><strong>${t.reviewCount}</strong><span>${outstandingMoney(t.reviewPence)} in known values</span></div>
     </div>`;
   }
@@ -826,7 +826,7 @@
         ${recovery?`<span><b>Recovering party:</b> ${e(recovery)}</span>`:''}
       </div>
       <table class="outstanding-lot-table">
-        <thead><tr><th>Lot</th><th>Description</th><th>Collection status</th><th>Excel CurrentPrice</th></tr></thead>
+        <thead><tr><th>Lot</th><th>Description</th><th>Collection status</th><th>Hammer</th></tr></thead>
         <tbody>${group.lots.map(lot=>`<tr>
           <td><strong>${e(lot.lotNumber)}</strong></td><td>${e(lot.description||'No description')}</td>
           <td><span class="outstanding-lot-status ${lot.review?'needs-check':'pending'}">${e(lot.status)}</span></td>
@@ -846,8 +846,9 @@
       Each Excel lot is included unless its unique matching drawn lot is greened off.
       Lots not drawn, duplicated or with invoice mismatches remain listed as <em>unverified</em>,
       rather than being assumed collected. Values are taken from the
-      <strong>dbo.RWX_Listings::CurrentPrice</strong> Excel column; they are not invoice balances
-      and exclude buyer's premium, VAT and shipping. ${t.missingPrices?
+      <strong>dbo.RWX_Listings::CurrentPrice</strong> Excel column; they are hammer prices, not invoice balances.
+      The CSV export calculates 25% BP, 20% VAT on hammer and 20% VAT on BP per lot,
+      rounding each VAT component to a penny. Shipping is not included. ${t.missingPrices?
         `<strong>${t.missingPrices} price${t.missingPrices===1?' is':'s are'} missing.</strong>`:''}
       ${t.excludedDuplicatePrices?`<strong>${t.excludedDuplicatePrices} duplicate row value${t.excludedDuplicatePrices===1?' is':'s are'} excluded from totals.</strong>`:''}
     </p>`;
@@ -875,7 +876,7 @@
         and the buyer details needed to follow up. Refreshes automatically from the current map and Excel data.</p>
       <div class="outstanding-top-actions">
         <button type="button" class="btn btn-primary" data-action="printOutstanding">Print report / Save PDF</button>
-        <button type="button" class="btn btn-light" data-action="exportOutstandingCsv">Download CSV for Excel</button>
+        <button type="button" class="btn btn-light" data-action="exportOutstandingCsv">Download CSV (Hammer / BP / VAT)</button>
         <button type="button" class="btn btn-light" data-admin-next="collections">Back to invoice records</button>
       </div>
       <p class="outstanding-report-source">Source: ${e(data.report.sourceName||'Daily Excel report')}
@@ -898,28 +899,44 @@
         '<p class="outstanding-empty">No lots remain unconfirmed as collected.</p>'}`;
   }
 
+  // UK auction charges are calculated per lot in integer pence.
+  // Round the VAT on hammer and VAT on BP individually, then add them.
+  function outstandingCharges(hammerPence){
+    if(!Number.isSafeInteger(hammerPence)||hammerPence<0)return null;
+    const bpPence=Math.round(hammerPence/4);
+    const hammerVatPence=Math.round(hammerPence/5);
+    const bpVatPence=Math.round(bpPence/5);
+    return {bpPence,hammerVatPence,bpVatPence,totalVatPence:hammerVatPence+bpVatPence};
+  }
   function exportOutstandingCsv(){
     if(!localAdminAllowed())return;
     const data=buildOutstandingData();
     if(!data){toast('Import the daily Excel report first.');return;}
-    const cols=['Invoice','Buyer','Buyer mobile','Buyer telephone','Buyer email','Buyer username',
-      'Billing postcode','Lot number','Description','Collection status','Excel CurrentPrice GBP',
-      'Included in subtotal GBP','Recovering party','Booked for','Excel Lot Status'];
+    // Exactly the nine requested columns, with invoice number at the end.
+    const cols=['Lot','Description','Hammer','BP','Total VAT (BP + HAMMER VAT)',
+      'Buyer','Buyer Phone','Buyer Email','Buyer invoice number'];
     const rows=[cols];
+    const amount=pence=>(pence/100).toFixed(2);
     for(const group of data.groups){
-      const rec=group.booking||{};
-      const recovery=[rec.recoveryName,rec.recoveryCompany,rec.recoveryPhone,rec.recoveryEmail].filter(Boolean).join(' · ');
-      for(const lot of group.lots)rows.push([
-        group.invoice,group.buyer,group.mobile,group.telephone,group.email,group.username,
-        group.postcode,lot.lotNumber,lot.description,lot.status,
-        lot.pricePence===null?'':(lot.pricePence/100).toFixed(2),
-        lot.countedPence===null?'':(lot.countedPence/100).toFixed(2),
-        recovery,rec.bookedIn&&rec.bookingDate?rec.bookingDate+' '+(rec.bookingTime||''):'' ,
-        lot.excelLotStatus
-      ]);
+      const phones=[group.mobile,group.telephone].map(v=>String(v||'').trim())
+        .filter((v,i,all)=>v&&all.indexOf(v)===i).join(' / ');
+      for(const lot of group.lots){
+        // Duplicate Excel lot numbers must not inflate summed figures.
+        // Keep their rows for verification but leave all values blank.
+        const hammer=lot.countedPence;
+        const charges=hammer===null?null:outstandingCharges(hammer);
+        const description=lot.description||'No description supplied';
+        const verification=lot.review?' ['+lot.status+']':'';
+        rows.push([
+          lot.lotNumber,description+verification,
+          charges?amount(hammer):'',
+          charges?amount(charges.bpPence):'',
+          charges?amount(charges.totalVatPence):'',
+          group.buyer,phones,group.email,group.invoice
+        ]);
+      }
     }
-    // Protect spreadsheet users against formula injection in untrusted
-    // buyer/title/contact strings. Numeric values are fixed decimal strings.
+    // Prevent formula injection when Excel opens text from the daily export.
     const escapeCell=value=>{
       let v=String(value??'');
       if(/^[\s]*[=+\-@\t\r\n]/.test(v))v="'"+v;
@@ -928,7 +945,7 @@
     const csv='\ufeff'+rows.map(r=>r.map(escapeCell).join(',')).join('\r\n');
     downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),
       safeName(project.name)+'-outstanding-lots-CONFIDENTIAL.csv');
-    toast('Outstanding lots CSV downloaded locally. Handle buyer contacts confidentially.');
+    toast('Outstanding hammer/BP/VAT report downloaded locally. Handle buyer contacts confidentially.');
   }
 
   function renderCollectionsPanel(){
