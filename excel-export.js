@@ -70,10 +70,10 @@
     const cols=widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('');
     const merges=['1','2','3'].map(n=>`<mergeCell ref="A${n}:${width}${n}"/>`).join('');
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
-      `<worksheet xmlns="${NS}"><sheetViews><sheetView showGridLines="0" workbookViewId="0">`+
+      `<worksheet xmlns="${NS}"><dimension ref="A1:${width}${lastRow}"/><sheetViews><sheetView showGridLines="0" workbookViewId="0">`+
       `<pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`+
       `<sheetFormatPr defaultRowHeight="18"/><cols>${cols}</cols><sheetData>${rows.join('')}</sheetData>`+
-      `<mergeCells count="3">${merges}</mergeCells><autoFilter ref="A5:${width}${lastRow}"/>`+
+      `<autoFilter ref="A5:${width}${lastRow}"/><mergeCells count="3">${merges}</mergeCells>`+
       `<pageMargins left="0.25" right="0.25" top="0.5" bottom="0.5" header="0.3" footer="0.3"/></worksheet>`;
   }
   function stylesXml(){
@@ -159,6 +159,7 @@
     const includeBuyer=input.excludeBuyer!==true;
     const lots=input.lots.map(l=>({...l,includeBuyer}));
     const count=lots.length;
+    if(count===0)throw Error('No outstanding lots match the selected report filters. Select a wider report or verify the map/Excel lot numbers.');
     const filterText=[
       input.mappedOnly?'Map lots only':'All Excel lots',
       includeBuyer?'Buyer details included':'Buyer details excluded',
