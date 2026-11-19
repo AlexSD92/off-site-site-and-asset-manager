@@ -946,6 +946,7 @@
       </div>
       <div class="outstanding-top-actions">
         <button type="button" class="btn btn-primary" data-action="printOutstanding">Print report / Save PDF</button>
+        <button type="button" class="btn btn-light" data-action="exportOutstandingXlsx">Download Excel (2 tabs)</button>
         <button type="button" class="btn btn-light" data-action="exportOutstandingCsv">Download CSV (Hammer / BP / VAT)</button>
         <button type="button" class="btn btn-light" data-admin-next="collections">Back to invoice records</button>
       </div>
@@ -1001,6 +1002,58 @@
     const bpVatPence=Math.round(bpPence/5);
     return {bpPence,hammerVatPence,bpVatPence,totalVatPence:hammerVatPence+bpVatPence};
   }
+  function exportOutstandingXlsx(){
+    if(!localAdminAllowed())return;
+    const data=buildOutstandingData({mappedOnly:settings.outstandingMappedOnly});
+    if(!data){toast('Import the daily Excel report first.');return;}
+    if(!window.YardMapExcel){toast('Excel writer is missing. Refresh YardMap and try again.');return;}
+    const lots=[],summary=new Map();
+    const ordered=settings.outstandingGroupByInvoice?invoiceOrderedOutstandingGroups(data):data.groups;
+    for(const group of ordered){
+      const phones=[group.mobile,group.telephone].map(v=>String(v||'').trim())
+        .filter((v,i,all)=>v&&all.indexOf(v)===i).join(' / ');
+      for(const lot of group.lots){
+        const hammer=lot.countedPence;
+        const charges=hammer===null?null:outstandingCharges(hammer);
+        const totalPence=charges?hammer+charges.bpPence+charges.totalVatPence:null;
+        lots.push({
+          invoice:group.invoice,lot:lot.lotNumber,
+          description:(lot.description||'No description supplied')+(lot.review?' ['+lot.status+']':''),
+          hammerPence:hammer,bpPence:charges?.bpPence??null,
+          vatPence:charges?.totalVatPence??null,totalPence,
+          status:lot.status,buyer:group.buyer,phone:phones,email:group.email
+        });
+        // Do not fabricate invoice numbers for uninvoiceed rows. The
+        // second tab includes only invoices with a genuine source ID.
+        if(group.invoice){
+          if(!summary.has(group.invoice)){
+            summary.set(group.invoice,{invoice:group.invoice,totalPence:0,incompleteCount:0});
+          }
+          const entry=summary.get(group.invoice);
+          if(totalPence===null)entry.incompleteCount++;
+          else entry.totalPence+=totalPence;
+        }
+      }
+    }
+    const invoices=[...summary.values()].sort((a,b)=>
+      a.invoice.localeCompare(b.invoice,undefined,{numeric:true,sensitivity:'base'}));
+    try{
+      const bytes=window.YardMapExcel.createReport({
+        siteName:project.name,mappedOnly:settings.outstandingMappedOnly,
+        excludeBuyer:settings.outstandingExcludeBuyer,
+        groupByInvoice:settings.outstandingGroupByInvoice,
+        lots,invoices
+      });
+      downloadBlob(new Blob([bytes],{
+        type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }),safeName(project.name)+'-outstanding-lots.xlsx');
+      toast('Excel workbook downloaded with Lot Details and Invoice Summary tabs.');
+    }catch(err){
+      console.error('Could not generate local Excel report:',err);
+      toast('Excel download failed: '+String(err?.message||'Unknown error').slice(0,100));
+    }
+  }
+
   function exportOutstandingCsv(){
     if(!localAdminAllowed())return;
     const excludeBuyer=settings.outstandingExcludeBuyer;
@@ -2762,6 +2815,7 @@
     if(action==='addCollectionNote'){addCollectionNote();return;}
     if(action==='printCollectionSchedule'){openPrintPreview('schedule');return;}
     if(action==='printOutstanding'){openPrintPreview('outstanding');return;}
+    if(action==='exportOutstandingXlsx'){exportOutstandingXlsx();return;}
     if(action==='exportOutstandingCsv'){exportOutstandingCsv();return;}
     if(action==='followAdminInvoice'){
       if(o?.type!=='lot'||!importedInvoiceFor(o))return;
