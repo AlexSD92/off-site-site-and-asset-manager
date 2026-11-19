@@ -1429,3 +1429,177 @@ body.map-fullscreen-active{overflow:hidden!important}
    overflow-y:auto!important;overflow-x:hidden
  }
 }
+
+/* Outstanding lots and valuation exposure — standalone Excel-backed admin
+   workflow. Read-only buyer and lot fields; no collections edits here. */
+.mode-admin .panel-tabs{grid-template-columns:repeat(4,minmax(0,1fr))}
+.outstanding-workspace{max-width:1200px}
+.outstanding-top-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:14px 0 17px}
+.outstanding-top-actions .btn{min-height:44px;font-size:13px;padding:11px 16px}
+.outstanding-report-source{font-size:12px;color:#607892;line-height:1.5;margin:3px 0 15px;overflow-wrap:anywhere}
+.outstanding-metrics{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;
+ margin:15px 0 16px
+}
+.outstanding-metrics>div{
+ display:flex;flex-direction:column;gap:5px;min-width:0;
+ background:#f2f7fd;border:1px solid #d8e6f3;border-radius:11px;padding:15px
+}
+.outstanding-metrics small{color:#5a7792;font-size:11px;font-weight:800;line-height:1.4}
+.outstanding-metrics strong{color:#245b96;font-size:21px;line-height:1.2;overflow-wrap:anywhere}
+.outstanding-metrics span{font-size:11px;line-height:1.4;color:#647f96}
+.outstanding-method{
+ color:#47657f;font-size:12px;line-height:1.65;margin:14px 0 22px;
+ padding:13px 16px;border-left:3px solid #4a91d5;background:#f1f7fd;border-radius:0 9px 9px 0
+}
+.outstanding-method strong{color:#315775}
+.outstanding-invoice{
+ margin:18px 0 22px;padding:0;
+ border:1px solid #dce7f1;border-radius:12px;background:#fff;
+ overflow:hidden;break-inside:auto;page-break-inside:auto
+}
+.outstanding-invoice-head{
+ display:flex;align-items:flex-start;justify-content:space-between;gap:15px;
+ padding:15px 18px;background:#eef5fd;border-bottom:1px solid #d4e4f1
+}
+.outstanding-invoice-head h3{color:#285b90;font-size:17px;margin:0 0 5px}
+.outstanding-invoice-head p{font-size:13px;line-height:1.5;margin:0;color:#3f607e;overflow-wrap:anywhere}
+.outstanding-invoice-head p strong{color:#965e28}
+.outstanding-invoice-total{flex:0 0 auto;text-align:right;display:flex;flex-direction:column;gap:5px}
+.outstanding-invoice-total small{color:#5d7994;font-size:11px;font-weight:700}
+.outstanding-invoice-total strong{color:#1f644d;font-size:20px}
+.outstanding-contact-lines{
+ display:flex;flex-wrap:wrap;align-items:center;gap:7px 20px;
+ padding:12px 18px;border-bottom:1px solid #e5edf4
+}
+.outstanding-contact-lines>span{font-size:12px;line-height:1.5;color:#506b86;overflow-wrap:anywhere}
+.outstanding-contact-lines b{color:#284d70}
+.outstanding-lot-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.outstanding-lot-table th{
+ text-align:left;font-size:11px;font-weight:850;
+ background:#f9fbfe;color:#456986;
+ border-bottom:1px solid #dce7f1;padding:11px 12px
+}
+.outstanding-lot-table td{
+ color:#2f4c68;vertical-align:top;font-size:12px;line-height:1.5;
+ border-bottom:1px solid #e4edf5;padding:11px 12px;overflow-wrap:anywhere
+}
+.outstanding-lot-table tr:last-child td{border-bottom:0}
+.outstanding-lot-table th:nth-child(1){width:8%}
+.outstanding-lot-table th:nth-child(2){width:38%}
+.outstanding-lot-table th:nth-child(3){width:31%}
+.outstanding-lot-table th:nth-child(4){width:23%;text-align:right}
+.outstanding-lot-table td:last-child{text-align:right}
+.outstanding-lot-table td:first-child strong{font-size:13px;color:#234e7b}
+.outstanding-lot-status{
+ display:inline-flex;align-items:center;border-radius:7px;
+ padding:5px 8px;font-size:11px;line-height:1.45;font-weight:700
+}
+.outstanding-lot-status.pending{background:#fff1d6;color:#7a540f;border:1px solid #e8ca8e}
+.outstanding-lot-status.needs-check{background:#fce9ec;color:#8a3947;border:1px solid #e5b5c0}
+.outstanding-money{font-weight:850;font-variant-numeric:tabular-nums}
+.outstanding-value-warning{
+ padding:9px 14px;margin:0;background:#fff8e9;color:#785626;
+ border-top:1px solid #eddaaf;font-size:12px;line-height:1.5
+}
+.outstanding-empty{
+ padding:20px;border:1px solid #a8dabb;background:#edfaf1;
+ color:#26734a;border-radius:9px;font-size:14px;line-height:1.5
+}
+.print-outstanding{
+ width:min(960px,100%);flex:0 0 auto;padding:26px;
+ background:#fff;color:#213c55;border:1px solid #dce3ea;
+ box-shadow:0 5px 32px #23436323;overflow:visible
+}
+#printOutstanding[hidden]{display:none!important}
+.print-outstanding .outstanding-invoice{border-color:#d8e3ed;background:#fff}
+.print-outstanding .outstanding-invoice-head{background:#eef5fc}
+.print-outstanding .outstanding-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+.print-outstanding .outstanding-metrics strong{font-size:18px}
+.print-outstanding .outstanding-lot-table td{font-size:11px}
+.print-outstanding .outstanding-lot-table th{font-size:10px}
+.theme-dark .outstanding-metrics>div{background:#223951;border-color:#49627d}
+.theme-dark .outstanding-metrics small,.theme-dark .outstanding-metrics span,
+.theme-dark .outstanding-report-source{color:#c3d5ea}
+.theme-dark .outstanding-metrics strong{color:#c0dbff}
+.theme-dark .outstanding-method{background:#253e58;color:#d1e5fc;border-color:#7aaced}
+.theme-dark .outstanding-method strong{color:#ecf5ff}
+.theme-dark .outstanding-invoice{background:#1e3045;border-color:#405c76}
+.theme-dark .outstanding-invoice-head{background:#29435e;border-color:#46647e}
+.theme-dark .outstanding-invoice-head h3,.theme-dark .outstanding-invoice-head p{color:#dcecff}
+.theme-dark .outstanding-invoice-total strong{color:#a8f2cd}
+.theme-dark .outstanding-invoice-total small{color:#c1d3e6}
+.theme-dark .outstanding-contact-lines{border-color:#445d75}
+.theme-dark .outstanding-contact-lines span,.theme-dark .outstanding-contact-lines b{color:#d0e3f7}
+.theme-dark .outstanding-lot-table th{background:#263e54;color:#d2e6fc;border-color:#4b667d}
+.theme-dark .outstanding-lot-table td{color:#d6e8f9;border-color:#3c536a}
+.theme-dark .outstanding-lot-table td:first-child strong{color:#c1dcfc}
+.theme-dark .outstanding-lot-status.pending{background:#594a24;color:#ffedb8;border-color:#9e7a37}
+.theme-dark .outstanding-lot-status.needs-check{background:#532b3d;color:#ffd3dc;border-color:#8e5266}
+.theme-dark .outstanding-value-warning{background:#4b3c24;color:#ffe3a1;border-color:#826234}
+.theme-dark .outstanding-empty{background:#1e4c35;color:#baf5d4;border-color:#41825c}
+.theme-dark .print-outstanding,.theme-dark .print-outstanding *{color:#213c55}
+.theme-dark .print-outstanding{background:#fff;border-color:#dce3ea}
+.theme-dark .print-outstanding .outstanding-invoice{background:#fff}
+.theme-dark .print-outstanding .outstanding-invoice-head{background:#eef5fc}
+.theme-dark .print-outstanding .outstanding-lot-table th{background:#f8fbfe}
+.theme-dark .print-outstanding .outstanding-metrics>div{background:#f3f8fd}
+.theme-dark .print-outstanding .outstanding-method{background:#f1f7fd}
+@media(max-width:900px){
+ .mode-admin .panel-tab{font-size:12px;gap:6px;padding:10px 7px}
+ .outstanding-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:680px){
+ .mode-admin .panel-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .outstanding-invoice-head{flex-direction:column;gap:8px}
+ .outstanding-invoice-total{text-align:left}
+ .outstanding-invoice{overflow-x:auto}
+ .outstanding-lot-table{min-width:540px}
+ .outstanding-contact-lines{padding:11px}
+ .print-outstanding{padding:13px}
+ .print-outstanding .outstanding-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:460px){
+ .outstanding-metrics{grid-template-columns:1fr 1fr;gap:6px}
+ .outstanding-metrics>div{padding:11px}
+ .outstanding-metrics strong{font-size:17px}
+ .outstanding-top-actions .btn{flex:1 1 100%}
+}
+@media print{
+ #printOutstanding[hidden]{display:none!important}
+ .print-outstanding{
+   width:100%!important;max-width:none!important;
+   padding:10mm!important;margin:0!important;
+   border:0!important;box-shadow:none!important;
+   overflow:visible!important;color:#192f44!important;background:#fff!important
+ }
+ .print-outstanding .directory-head{break-after:avoid-page}
+ .print-outstanding .outstanding-metrics{
+   display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+   gap:2.5mm!important;break-inside:avoid;page-break-inside:avoid
+ }
+ .print-outstanding .outstanding-metrics>div{padding:2.5mm!important;border:1px solid #dae5ef!important}
+ .print-outstanding .outstanding-metrics small{font-size:7.5pt!important}
+ .print-outstanding .outstanding-metrics strong{font-size:13pt!important}
+ .print-outstanding .outstanding-metrics span{font-size:7.5pt!important}
+ .print-outstanding .outstanding-method{font-size:8.5pt!important;line-height:1.45!important}
+ .print-outstanding .outstanding-invoice{
+   break-inside:auto!important;page-break-inside:auto!important;overflow:visible!important;
+   margin:4mm 0 6mm!important;box-shadow:none!important
+ }
+ .print-outstanding .outstanding-invoice-head{break-after:avoid;page-break-after:avoid}
+ .print-outstanding .outstanding-invoice-head h3{font-size:12pt!important}
+ .print-outstanding .outstanding-invoice-head p{font-size:9pt!important}
+ .print-outstanding .outstanding-invoice-total strong{font-size:12pt!important}
+ .print-outstanding .outstanding-contact-lines span{font-size:8.5pt!important}
+ .print-outstanding .outstanding-lot-table{min-width:0!important;width:100%!important}
+ .print-outstanding .outstanding-lot-table thead{display:table-header-group}
+ .print-outstanding .outstanding-lot-table tr{break-inside:avoid;page-break-inside:avoid}
+ .print-outstanding .outstanding-lot-table td{font-size:8.5pt!important;padding:2mm!important}
+ .print-outstanding .outstanding-lot-table th{font-size:8pt!important;padding:2mm!important}
+ .print-outstanding .outstanding-lot-status{font-size:8pt!important;padding:1mm!important}
+ .print-outstanding .outstanding-value-warning{font-size:8pt!important}
+ .theme-dark .print-outstanding,.theme-dark .print-outstanding *{
+   background-color:transparent;color:#192f44!important
+ }
+}

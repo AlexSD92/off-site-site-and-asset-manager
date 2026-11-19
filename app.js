@@ -697,6 +697,240 @@
       </details>
     </div>`;
   }
+  function outstandingPricePence(raw){
+    if(typeof raw==='number')return Number.isFinite(raw)&&raw>=0&&raw*100<=Number.MAX_SAFE_INTEGER?Math.round(raw*100):null;
+    const cleaned=String(raw??'').trim().replace(/^(?:GBP\s*)?/i,'').replace(/[£,\s]/g,'');
+    if(!/^\d+(?:\.\d{1,2})?$/.test(cleaned))return null;
+    const value=Number(cleaned);
+    return Number.isFinite(value)&&value>=0&&value*100<=Number.MAX_SAFE_INTEGER?Math.round(value*100):null;
+  }
+
+  function outstandingMoney(pence){
+    return pence===null?'Not supplied':new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(pence/100);
+  }
+
+  function buildOutstandingData(){
+    const report=adminReport();
+    if(!report)return null;
+    const index=ADMIN().indexReport(report);
+    const mapLots=new Map();
+    for(const lot of project.objects.filter(o=>o.type==='lot')){
+      const key=ADMIN().lotKey(lot.number);
+      if(!mapLots.has(key))mapLots.set(key,[]);
+      mapLots.get(key).push(lot);
+    }
+    const groupsMap=new Map();
+    const totals={lotCount:0,groupCount:0,collectedCount:0,mapPendingCount:0,reviewCount:0,
+      totalPence:0,mapPendingPence:0,reviewPence:0,missingPrices:0,excludedDuplicatePrices:0};
+    const txt=v=>ADMIN().asText(v);
+    for(let rowIndex=0;rowIndex<report.rows.length;rowIndex++){
+      const row=report.rows[rowIndex],key=ADMIN().lotKey(row.LotNumber);
+      if(!key)continue;
+      const invoice=ADMIN().invoiceKey(row['dbo.RWX_Invoices::Id']);
+      const hasExcelDuplicate=index.duplicates.has(key);
+      const matches=mapLots.get(key)||[];
+      let status,review=false,lot=null;
+      if(hasExcelDuplicate){status='Duplicate lot in Excel — verify';review=true;}
+      else if(matches.length>1){status='Duplicate drawn lot — verify';review=true;}
+      else if(matches.length===0){status='Not drawn — collection unverified';review=true;}
+      else if(effectiveInvoiceFor(matches[0])!==invoice){status='Invoice mismatch — verify';review=true;}
+      else{
+        lot=matches[0];
+        if(lot.status==='cleared'){totals.collectedCount++;continue;}
+        status='On map — not greened off';
+      }
+      const price=outstandingPricePence(row['dbo.RWX_Listings::CurrentPrice']);
+      const counted=hasExcelDuplicate?null:price;
+      const groupKey=invoice?'invoice:'+invoice:'uninvoice:'+rowIndex;
+      if(!groupsMap.has(groupKey)){
+        groupsMap.set(groupKey,{key:groupKey,invoice,lots:[],buyer:'',buyerVariants:new Set(),
+          mobile:'',telephone:'',email:'',username:'',postcode:'',recovery:null,booking:null,
+          totalPence:0,missingPrices:0,reviewCount:0,duplicateCount:0});
+      }
+      const group=groupsMap.get(groupKey);
+      const buyer=txt(row['dbo.RWX_Invoices::Full Billing Name']);
+      if(buyer){group.buyerVariants.add(buyer);if(!group.buyer)group.buyer=buyer;}
+      if(!group.mobile)group.mobile=txt(row['mobile::StringNativeValue']);
+      if(!group.telephone)group.telephone=txt(row['tel::StringNativeValue']);
+      if(!group.postcode)group.postcode=txt(row['dbo.RWX_Invoices::BillingZipPostal']);
+      const username=txt(row['dbo.RWX_Users 2::UserName']);
+      if(username&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)){if(!group.email)group.email=username;}
+      else if(username&&!group.username)group.username=username;
+      const item={lotNumber:txt(row.LotNumber),description:txt(row['dbo.RWX_Listings::Title']),
+        status,review,sourcePrice:txt(row['dbo.RWX_Listings::CurrentPrice']),pricePence:price,
+        countedPence:counted,duplicate:hasExcelDuplicate,
+        excelLotStatus:txt(row['dbo.RWX_LineItems::Lot Status'])};
+      group.lots.push(item);
+      totals.lotCount++;
+      if(review){totals.reviewCount++;group.reviewCount++;}
+      else totals.mapPendingCount++;
+      if(counted!==null){
+        group.totalPence+=counted;
+        totals.totalPence+=counted;
+        if(review)totals.reviewPence+=counted;
+        else totals.mapPendingPence+=counted;
+      }else if(hasExcelDuplicate){
+        totals.excludedDuplicatePrices++;group.duplicateCount++;
+      }else{totals.missingPrices++;group.missingPrices++;}
+    }
+    const records=currentCollections();
+    for(const group of groupsMap.values()){
+      group.lots.sort((a,b)=>a.lotNumber.localeCompare(b.lotNumber,undefined,{numeric:true,sensitivity:'base'}));
+      const key=group.invoice?'inv:'+group.invoice:group.lots.length===1?'reportlot:'+ADMIN().lotKey(group.lots[0].lotNumber):'';
+      const record=COLLECTION().cleanRecord(records[key]);
+      group.booking=record;
+      group.recovery=record;
+    }
+    const groups=[...groupsMap.values()].sort((a,b)=>
+      String(a.lots[0]?.lotNumber||'').localeCompare(String(b.lots[0]?.lotNumber||''),undefined,{numeric:true,sensitivity:'base'}));
+    totals.groupCount=groups.length;
+    return {report,groups,totals,generatedAt:new Date().toLocaleString('en-GB')};
+  }
+
+  function outstandingMetricsHtml(data){
+    const t=data.totals;
+    return `<div class="outstanding-metrics">
+      <div><small>Not confirmed collected</small><strong>${t.lotCount}</strong><span>Excel lot rows</span></div>
+      <div><small>Known value of these lots</small><strong>${outstandingMoney(t.totalPence)}</strong><span>Excel CurrentPrice · not invoice balance</span></div>
+      <div><small>On-map outstanding value</small><strong>${outstandingMoney(t.mapPendingPence)}</strong><span>Lots drawn but not greened off</span></div>
+      <div><small>Needs collection verification</small><strong>${t.reviewCount}</strong><span>${outstandingMoney(t.reviewPence)} in known values</span></div>
+    </div>`;
+  }
+
+  function outstandingGroupHtml(group){
+    const rec=group.booking||{};
+    const contacts=[
+      ['Buyer mobile',group.mobile],
+      ['Telephone',group.telephone],
+      ['Buyer email',group.email],
+      ['Username (not an email)',group.username],
+      ['Billing postcode',group.postcode]
+    ].filter(([label,v])=>v);
+    const recovery=[
+      rec.recoveryName,rec.recoveryCompany,rec.recoveryPhone,rec.recoveryEmail
+    ].filter(Boolean).join(' · ');
+    const booking=rec.bookedIn&&rec.bookingDate?
+      rec.bookingDate+(rec.bookingTime?' '+rec.bookingTime:''):'Not booked';
+    const hasWarning=group.buyerVariants.size>1;
+    return `<article class="outstanding-invoice">
+      <header class="outstanding-invoice-head">
+        <div><h3>${e(group.invoice?'Invoice '+group.invoice:'Uninvoiced lot '+group.lots[0].lotNumber)}</h3>
+          <p>${e(group.buyer||'Buyer name not supplied')}${hasWarning?' · <strong>Buyer details inconsistent in Excel — verify</strong>':''}</p></div>
+        <div class="outstanding-invoice-total"><small>${group.lots.length} lot${group.lots.length===1?'':'s'} not confirmed collected</small>
+          <strong>${outstandingMoney(group.totalPence)}</strong></div>
+      </header>
+      <div class="outstanding-contact-lines">
+        ${contacts.length?contacts.map(([label,v])=>`<span><b>${e(label)}:</b> ${e(v)}</span>`).join(''):
+        '<span>Buyer contact details unavailable in Excel</span>'}
+        <span><b>Collection booked:</b> ${e(booking)}</span>
+        ${recovery?`<span><b>Recovering party:</b> ${e(recovery)}</span>`:''}
+      </div>
+      <table class="outstanding-lot-table">
+        <thead><tr><th>Lot</th><th>Description</th><th>Collection status</th><th>Excel CurrentPrice</th></tr></thead>
+        <tbody>${group.lots.map(lot=>`<tr>
+          <td><strong>${e(lot.lotNumber)}</strong></td><td>${e(lot.description||'No description')}</td>
+          <td><span class="outstanding-lot-status ${lot.review?'needs-check':'pending'}">${e(lot.status)}</span></td>
+          <td class="outstanding-money">${lot.duplicate?
+            `<span>${lot.pricePence!==null?outstandingMoney(lot.pricePence):'Value unavailable'}</span><small>Duplicate · excluded from total</small>`:
+            lot.pricePence===null?'Value not supplied':outstandingMoney(lot.pricePence)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+      ${group.missingPrices||group.duplicateCount?
+        `<p class="outstanding-value-warning">${group.missingPrices?'Missing prices: '+group.missingPrices+'. ':''}${group.duplicateCount?'Duplicate Excel lot rows excluded from totals: '+group.duplicateCount+'.':''} Subtotal includes verified numeric source values only.</p>`:''}
+    </article>`;
+  }
+
+  function outstandingExplanationHtml(data){
+    const t=data.totals;
+    return `<p class="outstanding-method"><strong>How this report works:</strong>
+      Each Excel lot is included unless its unique matching drawn lot is greened off.
+      Lots not drawn, duplicated or with invoice mismatches remain listed as <em>unverified</em>,
+      rather than being assumed collected. Values are taken from the
+      <strong>dbo.RWX_Listings::CurrentPrice</strong> Excel column; they are not invoice balances
+      and exclude buyer's premium, VAT and shipping. ${t.missingPrices?
+        `<strong>${t.missingPrices} price${t.missingPrices===1?' is':'s are'} missing.</strong>`:''}
+      ${t.excludedDuplicatePrices?`<strong>${t.excludedDuplicatePrices} duplicate row value${t.excludedDuplicatePrices===1?' is':'s are'} excluded from totals.</strong>`:''}
+    </p>`;
+  }
+
+  function renderOutstandingPanel(){
+    if(!localAdminAllowed()){
+      panel.innerHTML='<p class="admin-unmatched">Confidential reports are available only while using YardMap locally.</p>';
+      return;
+    }
+    const data=buildOutstandingData();
+    if(!data){
+      panel.innerHTML=`<section class="admin-step-page outstanding-workspace">
+        <span class="admin-step-label">STEP 4 OF 4 · OUTSTANDING REPORT</span>
+        <h2>Outstanding lots & values</h2>
+        <p class="admin-step-intro">Import the daily Excel report before creating an outstanding lots report.</p>
+        <button type="button" class="btn btn-primary" data-admin-next="admin">Import daily Excel</button>
+      </section>`;
+      return;
+    }
+    panel.innerHTML=`<section class="admin-step-page outstanding-workspace">
+      <span class="admin-step-label">STEP 4 OF 4 · OUTSTANDING REPORT</span>
+      <h2>Outstanding lots & values</h2>
+      <p class="admin-step-intro">See which Excel lots have not been confirmed collected, their imported values,
+        and the buyer details needed to follow up. Refreshes automatically from the current map and Excel data.</p>
+      <div class="outstanding-top-actions">
+        <button type="button" class="btn btn-primary" data-action="printOutstanding">Print report / Save PDF</button>
+        <button type="button" class="btn btn-light" data-action="exportOutstandingCsv">Download CSV for Excel</button>
+        <button type="button" class="btn btn-light" data-admin-next="collections">Back to invoice records</button>
+      </div>
+      <p class="outstanding-report-source">Source: ${e(data.report.sourceName||'Daily Excel report')}
+        ${data.report.auctionEventId?' · Auction '+e(data.report.auctionEventId):''}
+        · ${data.totals.groupCount} buyer/invoice group${data.totals.groupCount===1?'':'s'} · Generated ${e(data.generatedAt)} · Confidential / local</p>
+      ${outstandingMetricsHtml(data)}
+      ${outstandingExplanationHtml(data)}
+      ${data.groups.length?data.groups.map(outstandingGroupHtml).join(''):
+        '<p class="outstanding-empty">All uniquely matched lots have been greened off, and no other outstanding Excel rows remain.</p>'}
+    </section>`;
+  }
+
+  function outstandingPrintHtml(data){
+    return `<header class="directory-head"><h2>${e(project.name)} · Outstanding lots & value report</h2>
+      <p>Confidential · Generated ${e(data.generatedAt)} · Excel source: ${e(data.report.sourceName||'Daily report')}
+        ${data.report.auctionEventId?' · Auction '+e(data.report.auctionEventId):''}</p>
+      <p>Grouped by buyer/invoice, with lot-level descriptions, values and contact details.</p></header>
+      ${outstandingMetricsHtml(data)}${outstandingExplanationHtml(data)}
+      ${data.groups.length?data.groups.map(outstandingGroupHtml).join(''):
+        '<p class="outstanding-empty">No lots remain unconfirmed as collected.</p>'}`;
+  }
+
+  function exportOutstandingCsv(){
+    if(!localAdminAllowed())return;
+    const data=buildOutstandingData();
+    if(!data){toast('Import the daily Excel report first.');return;}
+    const cols=['Invoice','Buyer','Buyer mobile','Buyer telephone','Buyer email','Buyer username',
+      'Billing postcode','Lot number','Description','Collection status','Excel CurrentPrice GBP',
+      'Included in subtotal GBP','Recovering party','Booked for','Excel Lot Status'];
+    const rows=[cols];
+    for(const group of data.groups){
+      const rec=group.booking||{};
+      const recovery=[rec.recoveryName,rec.recoveryCompany,rec.recoveryPhone,rec.recoveryEmail].filter(Boolean).join(' · ');
+      for(const lot of group.lots)rows.push([
+        group.invoice,group.buyer,group.mobile,group.telephone,group.email,group.username,
+        group.postcode,lot.lotNumber,lot.description,lot.status,
+        lot.pricePence===null?'':(lot.pricePence/100).toFixed(2),
+        lot.countedPence===null?'':(lot.countedPence/100).toFixed(2),
+        recovery,rec.bookedIn&&rec.bookingDate?rec.bookingDate+' '+(rec.bookingTime||''):'' ,
+        lot.excelLotStatus
+      ]);
+    }
+    // Protect spreadsheet users against formula injection in untrusted
+    // buyer/title/contact strings. Numeric values are fixed decimal strings.
+    const escapeCell=value=>{
+      let v=String(value??'');
+      if(/^[\s]*[=+\-@\t\r\n]/.test(v))v="'"+v;
+      return '"'+v.replace(/"/g,'""')+'"';
+    };
+    const csv='\ufeff'+rows.map(r=>r.map(escapeCell).join(',')).join('\r\n');
+    downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),
+      safeName(project.name)+'-outstanding-lots-CONFIDENTIAL.csv');
+    toast('Outstanding lots CSV downloaded locally. Handle buyer contacts confidentially.');
+  }
+
   function renderCollectionsPanel(){
     if(!localAdminAllowed()){
       panel.innerHTML='<h2 class="panel-title">Collections · Local only</h2><p class="admin-unmatched">Customer collection records are disabled on hosted sites. Open YardMap on localhost instead.</p>';
@@ -705,12 +939,13 @@
     const entries=collectionsListEntries(),booked=collectionSchedule();
     if(settings.tab==='schedule'){
       panel.innerHTML=`<section class="admin-step-page">
-        <span class="admin-step-label">STEP 3 OF 3 · COLLECTION SCHEDULE</span>
+        <span class="admin-step-label">STEP 3 OF 4 · COLLECTION SCHEDULE</span>
         <h2>Review upcoming collections</h2>
         <p class="admin-step-intro">Appointments are grouped by date, then sorted by time. Each invoice appears once, even if it covers several lots. You can print the schedule without drawing a map.</p>
         <div class="schedule-top-actions">
           <button type="button" class="btn btn-primary" data-action="printCollectionSchedule" ${booked.length?'':'disabled'}>Print schedule / Save PDF</button>
           <button type="button" class="btn btn-light" data-admin-next="collections">Edit invoices and notes</button>
+          <button type="button" class="btn btn-light" data-admin-next="outstanding">Outstanding lots &amp; values</button>
         </div>
         <div class="schedule-summary-count"><strong>${booked.length}</strong><span>booked collection${booked.length===1?'':'s'}</span></div>
         ${scheduleHTML()}
@@ -720,7 +955,7 @@
     const selected=entries.find(x=>x.key===settings.collectionsSelectedKey);
     if(selected){
       panel.innerHTML=`<section class="admin-step-page">
-        <span class="admin-step-label">STEP 2 OF 3 · UPDATE COLLECTION</span>
+        <span class="admin-step-label">STEP 2 OF 4 · UPDATE COLLECTION</span>
         ${selectedCollectionHtml(selected)}
         <div class="admin-next-step">
           <span>NEXT STEP</span>
@@ -733,7 +968,7 @@
     const visible=filteredCollectionEntries();
     const hasReport=!!adminReport();
     panel.innerHTML=`<section class="admin-step-page">
-      <span class="admin-step-label">STEP 2 OF 3 · INVOICES & COLLECTIONS</span>
+      <span class="admin-step-label">STEP 2 OF 4 · INVOICES & COLLECTIONS</span>
       <h2>Find an invoice and record the arrangements</h2>
       <p class="admin-step-intro">Search for a buyer, invoice or lot number. Open the record, tick the collection checklist, enter the booking date and add notes as you go. Everything saves locally as you type.</p>
       <div class="admin-collection-counts">
@@ -766,6 +1001,7 @@
       <div class="admin-next-inline">
         <span>Finished updating the day's invoices?</span>
         <button type="button" class="btn btn-primary" data-admin-next="schedule">Go to collection schedule</button>
+        <button type="button" class="btn btn-light" data-admin-next="outstanding">Outstanding lots report</button>
       </div>
     </section>`;
   }
@@ -1100,7 +1336,7 @@
     drawSoon();
   }
   function switchTab(tab){
-    const allowed=settings.mode==='admin'?['admin','collections','schedule']:['properties','lots','access'];
+    const allowed=settings.mode==='admin'?['admin','collections','schedule','outstanding']:['properties','lots','access'];
     if(!allowed.includes(tab))return;
     const changed=settings.tab!==tab;
     settings.tab=tab;
@@ -1113,7 +1349,7 @@
     }
     panel.setAttribute('aria-label',({
       properties:'Site details',lots:'Drawn lot register',access:'Keys and access',
-      admin:'Daily Excel import',collections:'Invoice and collection records',schedule:'Collection schedule'
+      admin:'Daily Excel import',collections:'Invoice and collection records',schedule:'Collection schedule',outstanding:'Outstanding lot and value report'
     })[tab]);
     renderPanel();
     if(changed){
@@ -2003,7 +2239,7 @@
     const count=report?ADMIN().countMatch(report,project.objects):null;
     const groups=report?collectionsListEntries().length:0;
     panel.innerHTML=`<section class="admin-step-page">
-      <span class="admin-step-label">STEP 1 OF 3 · DAILY REPORT</span>
+      <span class="admin-step-label">STEP 1 OF 4 · DAILY REPORT</span>
       <h2>Import the daily sales spreadsheet</h2>
       <p class="admin-step-intro">Choose the Excel file sent by the admin team. YardMap reads the report on this computer and builds a list of invoices and lots automatically. <strong>You do not need to draw anything on the map.</strong></p>
       <div class="admin-upload-card">
@@ -2076,6 +2312,7 @@
     if(settings.mode==='admin'){
       if(settings.tab==='admin'){renderAdminPanel();return;}
       if(settings.tab==='collections'||settings.tab==='schedule'){renderCollectionsPanel();return;}
+      if(settings.tab==='outstanding'){renderOutstandingPanel();return;}
       renderAdminPanel();return;
     }
     const o=getSelected();
@@ -2298,6 +2535,8 @@
     }
     if(action==='addCollectionNote'){addCollectionNote();return;}
     if(action==='printCollectionSchedule'){openPrintPreview('schedule');return;}
+    if(action==='printOutstanding'){openPrintPreview('outstanding');return;}
+    if(action==='exportOutstandingCsv'){exportOutstandingCsv();return;}
     if(action==='followAdminInvoice'){
       if(o?.type!=='lot'||!importedInvoiceFor(o))return;
       const before=snapshot();o.invoice='';commit(before);
@@ -2474,16 +2713,16 @@
       ${scheduleHTML()}`;
   }
   function openPrintPreview(mode='site') {
-    printView=mode==='schedule'?'schedule':'site';
+    printView=mode==='outstanding'?'outstanding':mode==='schedule'?'schedule':'site';
     $('printPaper').value='A4';
-    $('printOrientation').value=printView==='schedule'?'portrait':project.cols>=project.rows?'landscape':'portrait';
+    $('printOrientation').value=printView==='site'?(project.cols>=project.rows?'landscape':'portrait'):'portrait';
     $('printText').checked=project.showText!==false;
     $('printGrid').checked=true;
     $('printContact').checked=true;
     $('printBuyerLayout').value='buyerGroups';
     $('printExcludeCollected').checked=false;
     for(const option of document.querySelectorAll('.print-site-option')){
-      option.hidden=printView==='schedule';
+      option.hidden=printView!=='site';
     }
     $('printDialog').showModal();
     renderPrintPreview();
@@ -2492,11 +2731,22 @@
     const paper=$('printPaper').value==='A3'?'A3':'A4';
     const orientation=$('printOrientation').value==='portrait'?'portrait':'landscape';
     $('printPageRules').textContent=`@media print{@page{size:${paper} ${orientation};margin:0}}`;
-    const isSchedule=printView==='schedule';
-    $('printPage').hidden=isSchedule;
-    $('printDirectory').hidden=isSchedule;
+    const isSchedule=printView==='schedule',isOutstanding=printView==='outstanding';
+    $('printPage').hidden=isSchedule||isOutstanding;
+    $('printDirectory').hidden=isSchedule||isOutstanding;
     $('printSchedule').hidden=!isSchedule;
+    $('printOutstanding').hidden=!isOutstanding;
     $('printDialog').classList.toggle('mode-schedule',isSchedule);
+    $('printDialog').classList.toggle('mode-outstanding',isOutstanding);
+    if(isOutstanding){
+      const report=buildOutstandingData();
+      $('printOutstanding').innerHTML=report?outstandingPrintHtml(report):
+        '<p>Import a daily Excel report before printing an outstanding lots report.</p>';
+      $('printSheetSize').textContent=report?
+        `${paper} ${orientation} · ${report.totals.lotCount} outstanding/unverified lot rows · ${outstandingMoney(report.totals.totalPence)} known source value`:
+        'No daily Excel imported';
+      return;
+    }
     if(isSchedule){
       $('printSchedule').innerHTML=printScheduleContent();
       $('printSheetSize').textContent=`${paper} ${orientation} · ${collectionSchedule().length} booked collection(s)`;
@@ -2697,7 +2947,7 @@
       const nextStep=event.target.closest('[data-admin-next]');
       if(nextStep&&settings.mode==='admin'){
         const dest=nextStep.dataset.adminNext;
-        if(dest==='admin'||dest==='collections'||dest==='schedule'){
+        if(dest==='admin'||dest==='collections'||dest==='schedule'||dest==='outstanding'){
           if(dest==='collections')settings.collectionsSelectedKey=null;
           switchTab(dest);panel.scrollTop=0;focusPanelHeading();
         }
