@@ -62,7 +62,8 @@
   const settings = { tab:'properties', mode:'map', lastAdminTab:'admin', tool:'select',
     lotFilter:'all', lotSearch:'', selected:null, panFromSpace:false,
     collectionsView:'list', collectionsSelectedKey:null, collectionsSearch:'',
-    collectionsSort:'lotAsc',lotSort:'numberAsc' };
+    collectionsSort:'lotAsc',lotSort:'numberAsc',
+    outstandingExcludeBuyer:false,outstandingMappedOnly:false };
   const view = {zoom:1, offsetX:0, offsetY:0, width:900, height:580, fitted:false, rotation:0};
   let uiPrefs={theme:'system',largerText:false,mapToolsCollapsed:false,mapDetailsCollapsed:false};
   let mapFocusRestore=null;
@@ -738,7 +739,8 @@
     return pence===null?'Not supplied':new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(pence/100);
   }
 
-  function buildOutstandingData(){
+  function buildOutstandingData(options={}){
+    const mappedOnly=options.mappedOnly===true;
     const report=adminReport();
     if(!report)return null;
     const index=ADMIN().indexReport(report);
@@ -758,6 +760,7 @@
       const invoice=ADMIN().invoiceKey(row['dbo.RWX_Invoices::Id']);
       const hasExcelDuplicate=index.duplicates.has(key);
       const matches=mapLots.get(key)||[];
+      if(mappedOnly && !matches.length)continue;
       let status,review=false,lot=null;
       if(hasExcelDuplicate){status='Duplicate lot in Excel — verify';review=true;}
       else if(matches.length>1){status='Duplicate drawn lot — verify';review=true;}
@@ -822,7 +825,7 @@
     const groups=[...groupsMap.values()].sort((a,b)=>
       String(a.lots[0]?.lotNumber||'').localeCompare(String(b.lots[0]?.lotNumber||''),undefined,{numeric:true,sensitivity:'base'}));
     totals.groupCount=groups.length;
-    return {report,groups,totals,generatedAt:new Date().toLocaleString('en-GB')};
+    return {report,groups,totals,mappedOnly,generatedAt:new Date().toLocaleString('en-GB')};
   }
 
   function outstandingMetricsHtml(data){
@@ -881,9 +884,10 @@
   function outstandingExplanationHtml(data){
     const t=data.totals;
     return `<p class="outstanding-method"><strong>How this report works:</strong>
-      Each Excel lot is included unless its unique matching drawn lot is marked collected <em>and</em> the latest Excel confirms payment.
-      Lots not drawn, duplicated, with invoice mismatches or marked collected without payment remain listed as <em>unverified</em>,
-      rather than being assumed collected. Values are taken from the
+      Excel lots are excluded as collected only if the latest Excel confirms payment <em>and</em> a unique matching drawn lot is marked collected.
+      ${data.mappedOnly?'Only lots drawn on the map are included; all undrawn Excel rows are omitted from this view.':'Undrawn Excel lots remain listed for collection verification.'}
+      Duplicates, invoice mismatches and collected-without-payment exceptions remain marked <em>unverified</em>.
+      Values are taken from the
       <strong>dbo.RWX_Listings::CurrentPrice</strong> Excel column; they are hammer prices, not invoice balances.
       The CSV export calculates 25% BP, 20% VAT on hammer and 20% VAT on BP per lot,
       rounding each VAT component to a penny. Shipping is not included. ${t.missingPrices?
@@ -897,7 +901,7 @@
       panel.innerHTML='<p class="admin-unmatched">Confidential reports are available only while using YardMap locally.</p>';
       return;
     }
-    const data=buildOutstandingData();
+    const data=buildOutstandingData({mappedOnly:settings.outstandingMappedOnly});
     if(!data){
       panel.innerHTML=`<section class="admin-step-page outstanding-workspace">
         <span class="admin-step-label">STEP 4 OF 4 · OUTSTANDING REPORT</span>
@@ -912,6 +916,12 @@
       <h2>Outstanding lots & values</h2>
       <p class="admin-step-intro">See which Excel lots have not been confirmed collected, their imported values,
         and the buyer details needed to follow up. Refreshes automatically from the current map and Excel data.</p>
+      <div class="outstanding-export-options" role="group" aria-label="Report export options">
+        <strong>Report options</strong>
+        <label><input type="checkbox" data-outstanding-option="excludeBuyer" ${settings.outstandingExcludeBuyer?'checked':''}> Exclude buyer details</label>
+        <label><input type="checkbox" data-outstanding-option="mappedOnly" ${settings.outstandingMappedOnly?'checked':''}> Only include lots drawn on the map</label>
+        <small>Applies to the preview, CSV and PDF. Does not delete or alter map lots, Excel records or notes.</small>
+      </div>
       <div class="outstanding-top-actions">
         <button type="button" class="btn btn-primary" data-action="printOutstanding">Print report / Save PDF</button>
         <button type="button" class="btn btn-light" data-action="exportOutstandingCsv">Download CSV (Hammer / BP / VAT)</button>
@@ -919,22 +929,45 @@
       </div>
       <p class="outstanding-report-source">Source: ${e(data.report.sourceName||'Daily Excel report')}
         ${data.report.auctionEventId?' · Auction '+e(data.report.auctionEventId):''}
-        · ${data.totals.groupCount} buyer/invoice group${data.totals.groupCount===1?'':'s'} · Generated ${e(data.generatedAt)} · Confidential / local</p>
+        · ${data.totals.groupCount} report group${data.totals.groupCount===1?'':'s'} · Generated ${e(data.generatedAt)} · Confidential / local</p>
       ${outstandingMetricsHtml(data)}
       ${outstandingExplanationHtml(data)}
-      ${data.groups.length?data.groups.map(outstandingGroupHtml).join(''):
-        '<p class="outstanding-empty">All uniquely matched lots are paid and marked collected; no unverified Excel rows remain.</p>'}
+      ${data.groups.length?(settings.outstandingExcludeBuyer?outstandingLotOnlyHtml(data):data.groups.map(outstandingGroupHtml).join('')):
+        '<p class="outstanding-empty">No outstanding lots match these report options.</p>'}
     </section>`;
   }
 
-  function outstandingPrintHtml(data){
+  function outstandingLotOnlyHtml(data){
+    const lots=data.groups.flatMap(group=>group.lots)
+      .sort((a,b)=>a.lotNumber.localeCompare(b.lotNumber,undefined,{numeric:true,sensitivity:'base'}));
+    return `<article class="outstanding-invoice outstanding-no-buyer">
+      <header class="outstanding-invoice-head">
+        <div><h3>Outstanding lot details</h3><p>Buyer names, contact details and invoice references excluded.</p></div>
+        <div class="outstanding-invoice-total"><small>Uncollected / unverified lots</small><strong>${lots.length}</strong></div>
+      </header>
+      <table class="outstanding-lot-table">
+        <thead><tr><th>Lot</th><th>Description</th><th>Collection status</th><th>Hammer</th></tr></thead>
+        <tbody>${lots.map(lot=>`<tr>
+          <td><strong>${e(lot.lotNumber)}</strong></td><td>${e(lot.description||'No description')}</td>
+          <td><span class="outstanding-lot-status ${lot.review?'needs-check':'pending'}">${e(lot.status)}</span></td>
+          <td class="outstanding-money">${lot.duplicate?
+            `<span>${lot.pricePence!==null?outstandingMoney(lot.pricePence):'Value unavailable'}</span><small>Duplicate · excluded from total</small>`:
+            lot.pricePence===null?'Value not supplied':outstandingMoney(lot.pricePence)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+      ${data.totals.missingPrices||data.totals.excludedDuplicatePrices?
+        `<p class="outstanding-value-warning">${data.totals.missingPrices} missing price(s); ${data.totals.excludedDuplicatePrices} duplicate row value(s) excluded from totals.</p>`:''}
+    </article>`;
+  }
+
+  function outstandingPrintHtml(data,options={}){
     return `<header class="directory-head"><h2>${e(project.name)} · Outstanding lots & value report</h2>
       <p>Confidential · Generated ${e(data.generatedAt)} · Excel source: ${e(data.report.sourceName||'Daily report')}
         ${data.report.auctionEventId?' · Auction '+e(data.report.auctionEventId):''}</p>
-      <p>Grouped by buyer/invoice, with lot-level descriptions, values and contact details.</p></header>
+      <p>${options.excludeBuyer?'Lot-level report. Buyer details and invoice references are omitted.':'Grouped by buyer/invoice, with lot-level descriptions, values and contact details.'}</p></header>
       ${outstandingMetricsHtml(data)}${outstandingExplanationHtml(data)}
-      ${data.groups.length?data.groups.map(outstandingGroupHtml).join(''):
-        '<p class="outstanding-empty">No lots remain unconfirmed as collected.</p>'}`;
+      ${data.groups.length?(options.excludeBuyer?outstandingLotOnlyHtml(data):data.groups.map(outstandingGroupHtml).join('')):
+        '<p class="outstanding-empty">No outstanding lots match these report options.</p>'}`;
   }
 
   // UK auction charges are calculated per lot in integer pence.
@@ -948,11 +981,12 @@
   }
   function exportOutstandingCsv(){
     if(!localAdminAllowed())return;
-    const data=buildOutstandingData();
+    const excludeBuyer=settings.outstandingExcludeBuyer;
+    const data=buildOutstandingData({mappedOnly:settings.outstandingMappedOnly});
     if(!data){toast('Import the daily Excel report first.');return;}
-    // Exactly the nine requested columns, with invoice number at the end.
+    // Preserve the original nine-column layout unless buyer details are explicitly excluded.
     const cols=['Lot','Description','Hammer','BP','Total VAT (BP + HAMMER VAT)',
-      'Buyer','Buyer Phone','Buyer Email','Buyer invoice number'];
+      ...(!excludeBuyer?['Buyer','Buyer Phone','Buyer Email','Buyer invoice number']:[])];
     const rows=[cols];
     const amount=pence=>(pence/100).toFixed(2);
     for(const group of data.groups){
@@ -970,7 +1004,7 @@
           charges?amount(hammer):'',
           charges?amount(charges.bpPence):'',
           charges?amount(charges.totalVatPence):'',
-          group.buyer,phones,group.email,group.invoice
+          ...(!excludeBuyer?[group.buyer,phones,group.email,group.invoice]:[])
         ]);
       }
     }
@@ -983,7 +1017,7 @@
     const csv='\ufeff'+rows.map(r=>r.map(escapeCell).join(',')).join('\r\n');
     downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),
       safeName(project.name)+'-outstanding-lots-CONFIDENTIAL.csv');
-    toast('Outstanding hammer/BP/VAT report downloaded locally. Handle buyer contacts confidentially.');
+    toast(excludeBuyer?'Outstanding report downloaded without buyer details.':'Outstanding report downloaded locally. Handle buyer contacts confidentially.');
   }
 
   function renderCollectionsPanel(){
@@ -2896,6 +2930,11 @@
     $('printContact').checked=true;
     $('printBuyerLayout').value='buyerGroups';
     $('printExcludeCollected').checked=false;
+    $('printExcludeBuyer').checked=settings.outstandingExcludeBuyer;
+    $('printMappedOnly').checked=settings.outstandingMappedOnly;
+    for(const option of document.querySelectorAll('.print-outstanding-option')){
+      option.hidden=printView!=='outstanding';
+    }
     for(const option of document.querySelectorAll('.print-site-option')){
       option.hidden=printView!=='site';
     }
@@ -2914,8 +2953,8 @@
     $('printDialog').classList.toggle('mode-schedule',isSchedule);
     $('printDialog').classList.toggle('mode-outstanding',isOutstanding);
     if(isOutstanding){
-      const report=buildOutstandingData();
-      $('printOutstanding').innerHTML=report?outstandingPrintHtml(report):
+      const report=buildOutstandingData({mappedOnly:$('printMappedOnly').checked});
+      $('printOutstanding').innerHTML=report?outstandingPrintHtml(report,{excludeBuyer:$('printExcludeBuyer').checked}):
         '<p>Import a daily Excel report before printing an outstanding lots report.</p>';
       $('printSheetSize').textContent=report?
         `${paper} ${orientation} · ${report.totals.lotCount} outstanding/unverified lot rows · ${outstandingMoney(report.totals.totalPence)} known source value`:
@@ -3058,8 +3097,15 @@
     $('textToggleBtn').addEventListener('click',setTextVisibility);
     $('printPreviewBtn').addEventListener('click',openPrintPreview);
     $('printCloseBtn').addEventListener('click',()=>$('printDialog').close());
-    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact','printBuyerLayout','printExcludeCollected']){
-      $(id).addEventListener('change',renderPrintPreview);
+    for(const id of ['printPaper','printOrientation','printText','printGrid','printContact','printBuyerLayout','printExcludeCollected','printExcludeBuyer','printMappedOnly']){
+      $(id).addEventListener('change',()=>{
+        if(printView==='outstanding'){
+          settings.outstandingExcludeBuyer=$('printExcludeBuyer').checked;
+          settings.outstandingMappedOnly=$('printMappedOnly').checked;
+          if(settings.mode==='admin'&&settings.tab==='outstanding')renderOutstandingPanel();
+        }
+        renderPrintPreview();
+      });
     }
     $('printGoBtn').addEventListener('click',printPlan);
     $('printDialog').addEventListener('click',ev=>{
@@ -3080,6 +3126,11 @@
       zoomAt(event.deltaY<0?1.12:1/1.12,event.clientX-r.left,event.clientY-r.top);
     },{passive:false});
     panel.addEventListener('change',event=>{
+      if(event.target.matches('[data-outstanding-option]')){
+        if(event.target.dataset.outstandingOption==='excludeBuyer')settings.outstandingExcludeBuyer=event.target.checked;
+        if(event.target.dataset.outstandingOption==='mappedOnly')settings.outstandingMappedOnly=event.target.checked;
+        renderOutstandingPanel();return;
+      }
       if(event.target.id==='collectionsSort'){
         settings.collectionsSort=event.target.value;
         updateCollectionListResults();return;
